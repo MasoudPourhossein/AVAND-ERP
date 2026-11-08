@@ -1,10 +1,10 @@
 {% extends "base.html" %}{% from "_m.html" import icon %}{% block h %}{{ 'برگشت از فروش' if c.kind=='return' else 'فاکتور فروش' }} {{ c.no }} - {{ c.cname }}{% endblock %}
 {% block body %}
-{% set s=inv_status(c) %}{% set diff=c.total-c.pos-c.cash %}
+{% set s=inv_status(c) %}{% set diff=c.total-c.paid %}
 <div class="grid g4 kpis mb">
  <div class="kpi" style="--c:#4f46e5"><span>مبلغ قابل پرداخت</span><b>{{ c.total|m }}</b><small>تخفیف: {{ (c.ldisc + c.discount)|m }} • مالیات: {{ c.vat_total|m }}</small></div>
- <div class="kpi" style="--c:#0891b2"><span>دریافتی پوز</span><b>{{ c.pos|m }}</b></div>
- <div class="kpi" style="--c:#059669"><span>دریافتی نقد</span><b>{{ c.cash|m }}</b></div>
+ <div class="kpi" style="--c:#0891b2"><span>پوز و بانک</span><b>{{ (c.pos + c.bank)|m }}</b></div>
+ <div class="kpi" style="--c:#059669"><span>نقد و چک</span><b>{{ (c.cash + c.chq)|m }}</b>{% if c.chq %}<small>چک: {{ c.chq|m }}</small>{% endif %}</div>
  <div class="kpi" style="--c:{{ '#059669' if diff==0 else '#dc2626' }}"><span>مانده ({{ s[0] }})</span><b>{{ diff|m }}</b></div>
 </div>
 <div class="bar"><a class="btn" href="/print/invoice/{{ c.id }}">{{ icon('printer') }} چاپ فاکتور رسمی</a><a class="btn s" href="/print/invoice/{{ c.id }}?fmt=pdf">PDF</a>
@@ -15,18 +15,22 @@
 <a class="btn s" href="/persons/{{ c.customer_id }}">مشتری: {{ c.cname }}</a>{% if c.visitor_id %}<a class="btn s" href="/persons/{{ c.visitor_id }}">ویزیتور: {{ c.vname }}</a>{% endif %}
 <span class="sp"></span>{% if can('users') %}<a class="btn r" href="/invoices/{{ c.id }}/remove">ابطال / حذف</a>{% endif %}</div>
 <div class="grid g2">
-{% if can("payment") and c.kind != 'return' %}<div class="card"><h3>{{ icon('credit-card') }} ثبت دریافتی (هر کارت‌کشیدن یک ردیف)</h3>
-<form method="post" class="f">
- <div><label>نوع</label><select name="method"><option value="pos">کارت‌خوان (پوز)</option><option value="cash">نقد</option></select></div>
+{% if can("payment","treasury") and c.kind != 'return' %}<div class="card"><h3>{{ icon('credit-card') }} ثبت دریافتی (هر کارت‌کشیدن یک ردیف)</h3>
+<form method="post" class="f" id="qr">
+ <div><label>روش</label><select name="method" id="qm"><option value="pos">کارت‌خوان (پوز)</option><option value="cash">نقد</option><option value="bank">واریز / حواله بانکی</option><option value="cheque">چک</option></select></div>
  <div><label>مبلغ (ریال)</label><input name="amount" type="number" min="1" value="{{ diff if diff>0 else '' }}" required></div>
+ <div class="q-cash"><label>صندوق</label><select name="box">{% for b in boxes %}<option value="{{ b.id }}">{{ b.name }}</option>{% endfor %}</select></div>
+ <div class="q-pos q-bank"><label>حساب بانک / پوز</label><select name="bank">{% for b in banks %}<option value="{{ b.id }}">{{ b.name }}</option>{% endfor %}</select></div>
+ <div class="q-cheque"><label>سریال چک</label><input name="serial"></div><div class="q-cheque"><label>سررسید</label><input name="due" placeholder="1405/01/01"></div>
+ <div class="q-cheque"><label>بانک صادرکننده</label><input name="cbank"></div><div class="q-cheque"><label>شناسه صیادی</label><input name="sayad" dir="ltr"></div>
  <div><label>شماره پیگیری</label><input name="ref"></div>
  <div><label>تاریخ</label><input name="date" value="{{ today }}"></div>
  <div><button class="btn g">ثبت دریافت</button></div></form>
-<p class="note">دریافت چک، واریز بانکی و علی‌الحساب در فاز ۲ (خزانه) اضافه می‌شود.</p></div>{% endif %}
-<div class="card"><h3>دریافتی‌ها</h3><table><tr><th>سند</th><th>تاریخ</th><th>نوع</th><th>پیگیری</th><th>کاربر</th><th class="n">مبلغ</th><th></th></tr>
-{% for p in pays %}<tr><td>{{ p.no }}</td><td>{{ p.date }}</td><td>{{ METHOD[p.method] }}</td><td>{{ p.ref or '' }}</td><td>{{ p.uname or '' }}</td><td class="n">{{ p.amount|m }}</td>
-<td><form method="post" action="/payments/{{ p.id }}/delete" onsubmit="return confirm('حذف شود؟')"><button class="btn sm r">حذف</button></form></td></tr>
-{% else %}<tr><td colspan="7" class="muted">دریافتی ثبت نشده است.</td></tr>{% endfor %}</table></div>
+{% if can('treasury') %}<p class="note"><a href="/treasury/new/recv?person={{ c.customer_id }}&inv={{ c.id }}">سند دریافت چندردیفی (چند چک / ترکیبی)</a></p>{% endif %}</div>{% endif %}
+<div class="card"><h3>دریافتی‌ها</h3><table><tr><th>سند</th><th>تاریخ</th><th>نوع</th><th>پیگیری / چک</th><th>کاربر</th><th class="n">مبلغ</th></tr>
+{% for p in pays %}<tr><td><a href="/treasury/{{ p.doc_id }}">{{ p.no }}</a></td><td>{{ p.date }}</td><td>{{ METHOD[p.method] }}</td><td>{{ p.ref or '' }}</td><td>{{ p.uname or '' }}</td><td class="n">{{ p.amount|m }}</td></tr>
+{% else %}<tr><td colspan="6" class="muted">دریافتی ثبت نشده است.</td></tr>{% endfor %}</table>
+<p class="note">برای حذف دریافتی، سند خزانه آن را باز و حذف کنید.</p></div>
 </div>
 <div class="card"><h3>اقلام فاکتور — تاریخ {{ c.date }} — انبار {{ c.whname }}</h3>
 <table><tr><th>کد</th><th>کالا</th><th>تعداد</th><th class="n">نرخ</th><th class="n">مبلغ</th><th class="n">تخفیف</th><th class="n">مالیات</th><th class="n">جمع</th></tr>
@@ -36,3 +40,4 @@
 {% if c.discount %}<tr><td colspan="7">تخفیف نهایی</td><td class="n">{{ c.discount|m }}</td></tr>{% endif %}
 <tr><td colspan="7"><b>قابل پرداخت</b></td><td class="n"><b>{{ c.total|m }}</b></td></tr></tfoot></table></div>
 {% endblock %}
+{% block js %}<script>const qm=document.getElementById('qm');if(qm){const f=()=>document.querySelectorAll('#qr [class^="q-"]').forEach(e=>e.style.display=e.className.split(' ').includes('q-'+qm.value)?'':'none');qm.onchange=f;f()}</script>{% endblock %}

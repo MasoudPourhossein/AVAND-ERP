@@ -26,6 +26,28 @@
       {{ nl('/purchases', 'list', 'فاکتورهای خرید', can('purchase','rep_stock','rep_fin')) }}
       {{ nl('/persons?kind=supplier', 'users', 'تامین‌کنندگان', can('persons','rep_fin')) }}
     </details>{% endif %}
+    {% if can('treasury','payment','rep_fin') %}
+    <details class="ng"><summary>{{ icon('wallet') }}<span>خزانه</span></summary>
+      {{ nl('/treasury/new/recv', 'wallet', 'دریافت (نقد، پوز، بانک، چک)', can('treasury')) }}
+      {{ nl('/treasury/new/pay', 'wallet', 'پرداخت (نقد، بانک، چک، خرج چک)', can('treasury')) }}
+      {{ nl('/treasury/new/transfer', 'send', 'انتقال وجه صندوق / بانک', can('treasury')) }}
+      {{ nl('/treasury', 'list', 'اسناد دریافت و پرداخت', can('treasury','rep_fin')) }}
+      {{ nl('/cheques?kind=recv', 'file-text', 'چک‌های دریافتی', can('treasury','rep_fin')) }}
+      {{ nl('/cheques?kind=pay', 'file-text', 'چک‌های پرداختی', can('treasury','rep_fin')) }}
+      {{ nl('/cash-banks', 'credit-card', 'صندوق‌ها و بانک‌ها', can('treasury','setup','rep_fin')) }}
+    </details>{% endif %}
+    {% if can('accounting','rep_fin') %}
+    <details class="ng"><summary>{{ icon('book-open') }}<span>حسابداری</span></summary>
+      {{ nl('/vouchers/new', 'plus', 'سند حسابداری دستی', can('accounting')) }}
+      {{ nl('/vouchers', 'list', 'اسناد حسابداری', can('accounting','rep_fin')) }}
+      {{ nl('/reports/gl/journal', 'book-open', 'دفتر روزنامه', can('rep_fin')) }}
+      {{ nl('/reports/gl/ledger', 'book-open', 'دفتر کل و معین', can('rep_fin')) }}
+      {{ nl('/reports/gl/tafsili', 'book-open', 'دفتر تفصیلی', can('rep_fin')) }}
+      {{ nl('/reports/gl/trial', 'scale', 'تراز آزمایشی', can('rep_fin')) }}
+      {{ nl('/reports/gl/pl', 'trending-up', 'سود و زیان', can('rep_fin')) }}
+      {{ nl('/reports/gl/bs', 'scale', 'ترازنامه', can('rep_fin')) }}
+      {{ nl('/accounts', 'list', 'کدینگ حساب‌ها', can('setup','rep_fin')) }}
+    </details>{% endif %}
     {% if can('receipt','transfer','items','setup','rep_stock') %}
     <details class="ng"><summary>{{ icon('warehouse') }}<span>انبار و کالا</span></summary>
       {{ nl('/items', 'package', 'کالاها', can('items','rep_stock')) }}

@@ -224,8 +224,12 @@ def api_search():
         if can("payment", "settle", "sale", "rep_sales", "rep_fin"):
             for r in q("SELECT s.id, s.no, c.name FROM sales_invoices s JOIN persons c ON c.id=s.customer_id WHERE s.no=?", (n,)):
                 out.append({"t": "فاکتور فروش", "l": f"{r['no']} - {r['name']}", "u": url_for("invoice", iid=r["id"])})
-            for r in q("SELECT p.no, p.inv_id, c.name FROM payments p JOIN sales_invoices s ON s.id=p.inv_id JOIN persons c ON c.id=s.customer_id WHERE p.no=?", (n,)):
-                out.append({"t": "سند دریافت", "l": f"{r['no']} - {r['name']}", "u": url_for("invoice", iid=r["inv_id"])})
+            for r in q("SELECT d.id, d.no, d.kind, COALESCE(c.name,'') name FROM tr_docs d LEFT JOIN persons c ON c.id=d.person_id WHERE d.no=?", (n,)):
+                out.append({"t": {"recv": "سند دریافت", "pay": "سند پرداخت"}.get(r["kind"], "انتقال وجه"), "l": f"{r['no']} - {r['name']}",
+                            "u": url_for("tr_view", did=r["id"])})
+        if can("accounting", "rep_fin"):
+            for r in q("SELECT id, no, descr FROM vouchers WHERE no=?", (n,)):
+                out.append({"t": "سند حسابداری", "l": f"{r['no']} - {r['descr'] or ''}", "u": url_for("voucher_view", vid=r["id"])})
         if can("purchase", "rep_stock", "rep_fin"):
             for r in q("SELECT p.id, p.no, s.name FROM purchases p JOIN persons s ON s.id=p.supplier_id WHERE p.no=?", (n,)):
                 out.append({"t": "فاکتور خرید", "l": f"{r['no']} - {r['name']}", "u": url_for("purchase_view", pid=r["id"])})

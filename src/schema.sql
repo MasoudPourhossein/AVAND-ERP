@@ -98,11 +98,7 @@ CREATE INDEX IF NOT EXISTS ix_si_visitor ON sales_invoices(visitor_id);
 CREATE INDEX IF NOT EXISTS ix_si_cons ON sales_invoices(cons_id);
 CREATE INDEX IF NOT EXISTS ix_sl_inv ON sales_lines(inv_id);
 
-CREATE TABLE IF NOT EXISTS payments(  -- دریافت بابت فاکتور فروش (فاز ۲: خزانه کامل)
-  id SERIAL PRIMARY KEY, no BIGINT NOT NULL, inv_id INT NOT NULL REFERENCES sales_invoices(id), date TEXT NOT NULL,
-  method TEXT NOT NULL, amount BIGINT NOT NULL, ref TEXT, created_by INT);
-CREATE INDEX IF NOT EXISTS ix_pay_inv ON payments(inv_id);
-CREATE INDEX IF NOT EXISTS ix_pay_date ON payments(date);
+-- payments: legacy table converted to the treasury view below (see core.init_db)
 
 -- ---------- v2: standard invoices (line discount + VAT), sales return, seller/buyer info
 ALTER TABLE sales_lines ADD COLUMN IF NOT EXISTS disc BIGINT NOT NULL DEFAULT 0;
@@ -142,3 +138,65 @@ SELECT u.*, CASE WHEN u.kind='return' THEN -1 ELSE 1 END AS sg,
   COALESCE(t.gross,0)-COALESCE(t.ldisc,0)+COALESCE(t.vat,0)-u.discount AS total
 FROM purchases u LEFT JOIN (SELECT pur_id, SUM(qty*price) gross, SUM(disc) ldisc, SUM(vat) vat, SUM(qty) qty
   FROM purchase_lines GROUP BY pur_id) t ON t.pur_id=u.id;
+
+
+-- ---------- v3: treasury
+CREATE TABLE IF NOT EXISTS cash_boxes(id SERIAL PRIMARY KEY, code TEXT UNIQUE NOT NULL, name TEXT NOT NULL, keeper TEXT,
+  is_default INT NOT NULL DEFAULT 0, active INT NOT NULL DEFAULT 1);
+CREATE TABLE IF NOT EXISTS banks(id SERIAL PRIMARY KEY, code TEXT UNIQUE NOT NULL, name TEXT NOT NULL, bank_name TEXT, branch TEXT,
+  account_no TEXT, iban TEXT, card_no TEXT, is_pos INT NOT NULL DEFAULT 0, is_default INT NOT NULL DEFAULT 0, active INT NOT NULL DEFAULT 1);
+CREATE TABLE IF NOT EXISTS cheques(
+  id SERIAL PRIMARY KEY, kind TEXT NOT NULL,                 -- recv | pay
+  serial TEXT, sayad TEXT, bank_name TEXT, branch TEXT, account_no TEXT, owner TEXT,
+  amount BIGINT NOT NULL, issue_date TEXT, due_date TEXT NOT NULL,
+  person_id INT REFERENCES persons(id),                      -- received from / paid to
+  holder_id INT REFERENCES persons(id),                      -- received cheque spent to (supplier)
+  bank_id INT REFERENCES banks(id),                          -- pay: our account, recv: bank deposited to
+  status TEXT NOT NULL, note TEXT, created TEXT);
+CREATE INDEX IF NOT EXISTS ix_chq_status ON cheques(kind, status, due_date);
+CREATE TABLE IF NOT EXISTS tr_docs(
+  id SERIAL PRIMARY KEY, no BIGINT NOT NULL, kind TEXT NOT NULL,   -- recv | pay | transfer
+  date TEXT NOT NULL, person_id INT REFERENCES persons(id), acc_id INT REFERENCES accounts(id), cc_id INT REFERENCES cost_centers(id),
+  inv_id INT REFERENCES sales_invoices(id) ON DELETE SET NULL, pur_id INT REFERENCES purchases(id) ON DELETE SET NULL,
+  visitor_id INT REFERENCES persons(id), note TEXT, created_by INT,
+  from_box INT REFERENCES cash_boxes(id), from_bank INT REFERENCES banks(id), to_box INT REFERENCES cash_boxes(id), to_bank INT REFERENCES banks(id));
+CREATE TABLE IF NOT EXISTS tr_lines(
+  id SERIAL PRIMARY KEY, doc_id INT NOT NULL REFERENCES tr_docs(id) ON DELETE CASCADE,
+  method TEXT NOT NULL,                                       -- cash | pos | bank | cheque | cheque_out | transfer
+  amount BIGINT NOT NULL, box_id INT REFERENCES cash_boxes(id), bank_id INT REFERENCES banks(id),
+  cheque_id INT REFERENCES cheques(id), ref TEXT);
+CREATE INDEX IF NOT EXISTS ix_trd_person ON tr_docs(person_id);
+CREATE INDEX IF NOT EXISTS ix_trd_inv ON tr_docs(inv_id);
+CREATE INDEX IF NOT EXISTS ix_trd_date ON tr_docs(date);
+CREATE INDEX IF NOT EXISTS ix_trl_doc ON tr_lines(doc_id);
+CREATE TABLE IF NOT EXISTS cheque_events(
+  id SERIAL PRIMARY KEY, cheque_id INT NOT NULL REFERENCES cheques(id) ON DELETE CASCADE, date TEXT NOT NULL,
+  from_status TEXT, to_status TEXT NOT NULL, bank_id INT REFERENCES banks(id), box_id INT REFERENCES cash_boxes(id),
+  person_id INT REFERENCES persons(id), tr_doc_id INT REFERENCES tr_docs(id) ON DELETE CASCADE, note TEXT, created_by INT);
+
+-- ---------- v3: general ledger (double entry)
+CREATE TABLE IF NOT EXISTS vouchers(
+  id SERIAL PRIMARY KEY, no BIGINT NOT NULL, date TEXT NOT NULL, kind TEXT NOT NULL DEFAULT 'auto',  -- auto | manual
+  src_type TEXT, src_id INT, descr TEXT, created_by INT);
+CREATE INDEX IF NOT EXISTS ix_vch_src ON vouchers(src_type, src_id);
+CREATE INDEX IF NOT EXISTS ix_vch_date ON vouchers(date);
+CREATE TABLE IF NOT EXISTS voucher_lines(
+  id BIGSERIAL PRIMARY KEY, voucher_id INT NOT NULL REFERENCES vouchers(id) ON DELETE CASCADE, account_id INT NOT NULL REFERENCES accounts(id),
+  person_id INT REFERENCES persons(id), bank_id INT REFERENCES banks(id), box_id INT REFERENCES cash_boxes(id),
+  cc_id INT REFERENCES cost_centers(id), debit BIGINT NOT NULL DEFAULT 0, credit BIGINT NOT NULL DEFAULT 0, descr TEXT);
+CREATE INDEX IF NOT EXISTS ix_vl_v ON voucher_lines(voucher_id);
+CREATE INDEX IF NOT EXISTS ix_vl_acc ON voucher_lines(account_id);
+CREATE INDEX IF NOT EXISTS ix_vl_person ON voucher_lines(person_id);
+
+-- received amounts per sales invoice (compat view used by sales reports)
+DROP VIEW IF EXISTS payments;
+CREATE VIEW payments AS
+SELECT l.id, d.no, d.inv_id, d.date, CASE WHEN l.method='cheque' THEN 'cheque' WHEN l.method IN ('bank') THEN 'bank'
+       WHEN l.method='pos' THEN 'pos' ELSE 'cash' END AS method, l.amount, COALESCE(l.ref, c.serial) AS ref, d.created_by,
+       d.person_id, d.visitor_id, d.id AS doc_id
+FROM tr_lines l JOIN tr_docs d ON d.id=l.doc_id LEFT JOIN cheques c ON c.id=l.cheque_id WHERE d.kind='recv';
+
+-- GL balance view
+DROP VIEW IF EXISTS v_gl;
+CREATE VIEW v_gl AS SELECT vl.*, v.date, v.no AS vno, v.kind AS vkind, v.src_type, v.src_id, v.descr AS vdescr, a.code AS acode, a.name AS aname
+FROM voucher_lines vl JOIN vouchers v ON v.id=vl.voucher_id JOIN accounts a ON a.id=vl.account_id;

@@ -1,0 +1,17 @@
+{% extends "base.html" %}{% from "_m.html" import icon %}{% block h %}سند حسابداری شماره {{ v.no }}{% endblock %}
+{% block body %}
+<div class="bar no-print"><button class="btn" onclick="print()">{{ icon('printer') }} چاپ</button><a class="btn s" href="/vouchers">فهرست اسناد</a>
+{% if src %}<a class="btn s" href="{{ src }}">سند مبدا: {{ SRC.get(v.src_type, v.src_type) }}</a>{% endif %}
+<span class="sp"></span>{% if v.kind=='manual' and can('accounting') %}<a class="btn s" href="/vouchers/{{ v.id }}/edit">ویرایش</a>{% endif %}
+{% if v.kind=='manual' and can('void') %}<form method="post" action="/vouchers/{{ v.id }}/delete" onsubmit="return confirm('سند حذف شود؟')"><button class="btn r">حذف</button></form>{% endif %}</div>
+<div class="doc">
+  <div class="doc-h">{% include "_brand.html" %}<div style="flex:1"><h2>سند حسابداری {{ 'دستی' if v.kind=='manual' else '(خودکار)' }}</h2><div class="co">{{ COMPANY }}</div></div>
+    <div>شماره: <b>{{ v.no }}</b><br>تاریخ: <b>{{ v.date }}</b></div></div>
+  <div class="doc-meta"><div>شرح: <b>{{ v.descr or '' }}</b></div>{% if v.src_type %}<div>منبع: {{ SRC.get(v.src_type, v.src_type) }}</div>{% endif %}<div>ثبت‌کننده: {{ uname(v.created_by) or '' }}</div></div>
+  <div class="tw"><table><tr><th>ردیف</th><th>کد</th><th>حساب معین</th><th>تفصیلی</th><th>مرکز هزینه</th><th>شرح</th><th class="n">بدهکار</th><th class="n">بستانکار</th></tr>
+  {% for l in lines %}<tr><td>{{ loop.index }}</td><td>{{ l.acode }}</td><td>{{ l.aname }}</td><td>{{ tname(l) }}</td><td>{{ l.ccname or '' }}</td><td>{{ l.descr or '' }}</td>
+  <td class="n">{{ l.debit|m if l.debit }}</td><td class="n">{{ l.credit|m if l.credit }}</td></tr>{% endfor %}
+  <tfoot><tr><td colspan="6"><b>جمع</b></td><td class="n"><b>{{ lines|sum(attribute='debit')|m }}</b></td><td class="n"><b>{{ lines|sum(attribute='credit')|m }}</b></td></tr></tfoot></table></div>
+  <div class="sign"><div>تنظیم‌کننده</div><div>حسابدار</div><div>مدیر مالی</div></div>
+</div>
+{% endblock %}

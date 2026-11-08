@@ -1,0 +1,26 @@
+{% extends "base.html" %}{% from "_m.html" import icon %}{% block h %}سند {{ TR_KIND[d.kind] }} شماره {{ d.no }}{% endblock %}
+{% block body %}
+<div class="bar no-print"><button class="btn" onclick="print()">{{ icon('printer') }} چاپ</button><a class="btn s" href="/treasury">فهرست اسناد</a>
+{% if d.inv_id %}<a class="btn s" href="/invoices/{{ d.inv_id }}">فاکتور {{ d.ino }}</a>{% endif %}
+{% if d.person_id %}<a class="btn s" href="/reports/fin/statement?person={{ d.person_id }}">صورت‌حساب {{ d.pname }}</a>{% endif %}
+{% if vid %}<a class="btn s" href="/vouchers/{{ vid }}">{{ icon('book-open') }} سند حسابداری</a>{% endif %}
+<span class="sp"></span>{% if can('void') %}<form method="post" action="/treasury/{{ d.id }}/delete" onsubmit="return confirm('سند خزانه حذف شود؟')"><button class="btn r">حذف سند</button></form>{% endif %}</div>
+<div class="doc">
+  <div class="doc-h">{% include "_brand.html" %}<div style="flex:1"><h2>{{ 'رسید دریافت وجه' if d.kind=='recv' else ('سند پرداخت وجه' if d.kind=='pay' else 'سند انتقال وجه') }}</h2><div class="co">{{ COMPANY }}</div></div>
+    <div>شماره: <b>{{ d.no }}</b><br>تاریخ: <b>{{ d.date }}</b></div></div>
+  <div class="doc-meta">
+    {% if d.kind=='transfer' %}<div>از: <b>{{ ptname(d.from_box, d.from_bank) }}</b></div><div>به: <b>{{ ptname(d.to_box, d.to_bank) }}</b></div>
+    {% else %}{% if d.pname %}<div>{{ 'دریافت از' if d.kind=='recv' else 'پرداخت به' }}: <b>{{ d.pcode }} - {{ d.pname }}</b></div>{% endif %}
+    {% if d.aname %}<div>حساب: <b>{{ d.acode }} - {{ d.aname }}</b></div>{% endif %}{% if d.ccname %}<div>مرکز هزینه: <b>{{ d.ccname }}</b></div>{% endif %}
+    <div>بابت: <b>{{ 'فاکتور فروش ' ~ d.ino if d.ino else 'علی‌الحساب' }}</b></div>{% endif %}
+    {% if d.note %}<div>شرح: {{ d.note }}</div>{% endif %}<div>ثبت‌کننده: {{ uname(d.created_by) or '' }}</div>
+  </div>
+  <div class="tw"><table><tr><th>ردیف</th><th>روش</th><th>صندوق / بانک</th><th>چک (سریال / سررسید / وضعیت)</th><th>پیگیری</th><th class="n">مبلغ (ریال)</th></tr>
+  {% for l in lines %}<tr><td>{{ loop.index }}</td><td>{{ TR_METHOD[l.method] }}</td><td>{{ l.xname or l.bname or '' }}</td>
+    <td>{% if l.cid %}<a href="/cheques/{{ l.cid }}">{{ l.serial or '#'~l.cid }}</a> — {{ l.due_date }} — {{ STATUS.get(l.cstatus, l.cstatus) }}{% endif %}</td>
+    <td>{{ l.ref or '' }}</td><td class="n">{{ l.amount|m }}</td></tr>{% endfor %}</table></div>
+  <div class="doc-foot"><table style="width:auto;margin:12px auto 0 0"><tr><td><b>جمع</b></td><td class="n" style="min-width:150px"><b>{{ lines|sum(attribute='amount')|m }}</b></td></tr></table>
+  <p>به حروف: {{ num_words(lines|sum(attribute='amount')) }} ریال</p></div>
+  <div class="sign"><div>امضای تحویل‌دهنده</div><div>امضای تحویل‌گیرنده</div><div>امضای صندوقدار</div></div>
+</div>
+{% endblock %}

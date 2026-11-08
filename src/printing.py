@@ -61,13 +61,13 @@ def sale_print(iid):
     if s["due_date"]:
         meta.append(("سررسید", s["due_date"]))
     lines = _lines("sales_lines", "inv_id", iid)
-    paid = s["pos"] + s["cash"]
+    paid = s["paid"]
     d = {"kind": "sale", "id": iid, "no": s["no"], "date": s["date"], "note": s["note"], "meta": meta, "user": uname(s["created_by"]),
          "title": "صورتحساب برگشت از فروش" if ret else "صورتحساب فروش کالا و خدمات",
          "seller": _person(s["customer_id"]) if ret else _company(), "buyer": _company() if ret else _person(s["customer_id"]),
          "seller_label": "مشخصات فروشنده (مرجوع‌کننده)" if ret else "مشخصات فروشنده", "buyer_label": "مشخصات خریدار",
          "lines": lines, "gross": s["gross"], "ldisc": s["ldisc"], "vat": s["vat_total"], "hdisc": s["discount"], "total": s["total"],
-         "words": num_words(s["total"]), "paid": None if ret else (s["pos"], s["cash"], s["total"] - paid),
+         "words": num_words(s["total"]), "paid": None if ret else (s["pos"] + s["bank"], s["cash"] + s["chq"], s["total"] - paid),
          "back": f"/invoices/{iid}", "edit": f"/sales/{iid}/edit" if can("void") and s["kind"] != "consign" else None,
          "ret": f"/sales/return/new?of={iid}" if can("sale") and not ret else None, "sign": ("مهر و امضای فروشنده", "مهر و امضای خریدار")}
     return _render(d)

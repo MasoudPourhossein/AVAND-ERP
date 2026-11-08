@@ -2,11 +2,11 @@
 Usage: python migrate_sqlite.py /path/to/anbar.db [--force]
 Runs only when the PostgreSQL database has no users (fresh install), unless --force."""
 import sqlite3, sys
-from core import app, init_db, q, x, v1, LEGACY_PERM, PRESETS
+from core import app, init_db, q, x, v1, LEGACY_PERM, PRESETS, default_box, default_bank
 import dbl as D
 
 TABLE_SEQ = ["users", "items", "prices", "persons", "receipts", "receipt_lines", "consignments", "cons_lines", "sales_invoices",
-             "sales_lines", "payments"]
+             "sales_lines"]
 
 
 def cols(sq, t):
@@ -97,16 +97,24 @@ def main(path, force=False):
             if not iid:
                 skipped += 1
                 continue
-            x("INSERT INTO payments(id,no,inv_id,date,method,amount,ref,created_by) VALUES(?,?,?,?,?,?,?,?)",
-              (p["id"], p["no"], iid, p["date"], p["method"], p["amount"], p["ref"], p["created_by"] if "created_by" in pyc else None))
+            inv = q("SELECT customer_id, visitor_id FROM sales_invoices WHERE id=?", (iid,), one=True)
+            m = p["method"] if p["method"] in ("cash", "pos", "bank") else "cash"
+            did = x("INSERT INTO tr_docs(no,kind,date,person_id,inv_id,visitor_id,created_by) VALUES(?,'recv',?,?,?,?,?)",
+                    (p["no"], p["date"], inv["customer_id"], iid, inv["visitor_id"], p["created_by"] if "created_by" in pyc else None))
+            x("INSERT INTO tr_lines(doc_id,method,amount,box_id,bank_id,ref) VALUES(?,?,?,?,?,?)",
+              (did, m, p["amount"], default_box() if m == "cash" else None, default_bank() if m != "cash" else None, p["ref"]))
         for k in sq.execute("SELECT * FROM counters"):
             x("INSERT INTO counters(kind,last) VALUES(?,?) ON CONFLICT(kind) DO UPDATE SET last=GREATEST(counters.last, excluded.last)", (k["kind"], k["last"]))
+        x("""INSERT INTO counters(kind,last) SELECT 'TRD', COALESCE(MAX(no),1000) FROM tr_docs
+             ON CONFLICT(kind) DO UPDATE SET last=GREATEST(counters.last, excluded.last)""")
+        import gl
+        nd = gl.repost_all()
         for t in TABLE_SEQ:
             D.conn().exec_driver_sql(f"SELECT setval(pg_get_serial_sequence('{t}','id'), COALESCE((SELECT MAX(id) FROM {t}),0)+1, false)")
         D.commit()
         print(f"OK: users={v1('SELECT COUNT(*) FROM users')} items={v1('SELECT COUNT(*) FROM items')} persons={v1('SELECT COUNT(*) FROM persons')} "
               f"consignments={v1('SELECT COUNT(*) FROM consignments')} invoices={v1('SELECT COUNT(*) FROM sales_invoices')} "
-              f"payments={v1('SELECT COUNT(*) FROM payments')} receipts={v1('SELECT COUNT(*) FROM receipts')}" + (f" skipped_payments={skipped}" if skipped else ""))
+              f"payments={v1('SELECT COUNT(*) FROM payments')} vouchers={v1('SELECT COUNT(*) FROM vouchers')} receipts={v1('SELECT COUNT(*) FROM receipts')}" + (f" skipped_payments={skipped}" if skipped else ""))
     return 0
 
 

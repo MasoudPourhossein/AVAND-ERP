@@ -1,0 +1,64 @@
+{% extends "base.html" %}{% from "_m.html" import icon %}{% block h %}{{ 'سند ' ~ TR_KIND[kind] if kind != 'transfer' else 'انتقال وجه بین صندوق و بانک' }}{% endblock %}
+{% block body %}{% set F = request.form %}
+<form method="post" class="card" id="frm" autocomplete="off">
+{% if kind == 'transfer' %}
+  <div class="f">
+    <div><label>تاریخ</label><input name="date" value="{{ F.date or today }}" required></div>
+    {% for nm, lab in [('from','از'),('to','به')] %}<div><label>{{ lab }}</label><select name="{{ nm }}" required>
+      {% for b in boxes %}<option value="box:{{ b.id }}" {{ 'selected' if F[nm]=='box:'~b.id }}>صندوق: {{ b.name }}</option>{% endfor %}
+      {% for b in banks %}<option value="bank:{{ b.id }}" {{ 'selected' if F[nm]=='bank:'~b.id or (not F[nm] and nm=='to' and loop.first) }}>بانک: {{ b.name }}</option>{% endfor %}</select></div>{% endfor %}
+    <div><label>مبلغ (ریال)</label><input name="amount" type="number" min="1" value="{{ F.amount }}" required></div>
+    <div><label>شماره پیگیری</label><input name="ref" value="{{ F.ref }}"></div>
+    <div style="grid-column:1/-1"><label>توضیح</label><input name="note" value="{{ F.note }}" placeholder="مثلاً واریز وجه صندوق به بانک"></div>
+  </div>
+{% else %}
+  <div class="f" style="margin-bottom:14px">
+    <div><label>تاریخ</label><input name="date" value="{{ F.date or today }}" required></div>
+    <div class="pick"><label>{{ 'دریافت از' if kind=='recv' else 'پرداخت به' }} (شخص: مشتری، ویزیتور، تامین‌کننده، کارمند...)</label>
+      <select name="person" id="person"><option value="">— بدون شخص (فقط حساب) —</option>
+      {% for p in persons %}<option value="{{ p.id }}" {{ 'selected' if p.id==sel_person }}>{{ p.code }} - {{ p.name }} ({{ ['مشتری' if p.is_customer, 'تامین‌کننده' if p.is_supplier, 'ویزیتور' if p.is_visitor, 'کارمند' if p.is_employee]|select|join('، ') or 'سایر' }})</option>{% endfor %}</select>
+      <small id="bal" class="muted"></small></div>
+    <div><label>حساب طرف مقابل (خالی = پیش‌فرض نوع شخص)</label><select name="acc_id"><option value="">پیش‌فرض</option>
+      {% for a in accounts %}<option value="{{ a.id }}" {{ 'selected' if F.acc_id==a.id|string }}>{{ a.code }} - {{ a.name }}</option>{% endfor %}</select></div>
+    <div><label>مرکز هزینه</label><select name="cc_id"><option value="">—</option>{% for c in ccs %}<option value="{{ c.id }}" {{ 'selected' if F.cc_id==c.id|string }}>{{ c.code }} - {{ c.name }}</option>{% endfor %}</select></div>
+    {% if kind=='recv' %}<div><label>بابت فاکتور (اختیاری؛ خالی = علی‌الحساب)</label><select name="inv_id" id="inv"><option value="">علی‌الحساب</option></select></div>{% endif %}
+    <div style="grid-column:1/-1"><label>شرح</label><input name="note" value="{{ F.note }}"></div>
+  </div>
+  <div class="lines-wrap"><table class="lines"><thead><tr><th style="width:36px">#</th><th style="width:150px">روش</th><th style="width:140px">مبلغ (ریال)</th><th>صندوق / بانک / چک</th><th style="width:140px">پیگیری</th><th style="width:40px"></th></tr></thead>
+  <tbody id="rows"></tbody><tfoot><tr><td colspan="2">جمع</td><td class="n" id="tot">0</td><td colspan="3"></td></tr></tfoot></table></div>
+  <div class="bar" style="margin-top:12px">{% for m in methods %}<button type="button" class="btn s sm" onclick="addRow('{{ m }}')">{{ icon('plus') }} {{ TR_METHOD[m] }}</button>{% endfor %}</div>
+{% endif %}
+  <div class="bar" style="margin-top:14px"><a class="btn s" href="/treasury">انصراف</a><span class="sp"></span><button class="btn g">ثبت سند</button></div>
+</form>
+{% if kind != 'transfer' %}
+<template id="rt"><tr><td class="i"></td>
+  <td data-l="روش"><select name="method" class="m">{% for m in methods %}<option value="{{ m }}">{{ TR_METHOD[m] }}</option>{% endfor %}</select></td>
+  <td data-l="مبلغ"><input name="amount" class="am" type="number" min="0" inputmode="numeric"></td>
+  <td class="wide" data-l="محل">
+    <select name="box" class="w-cash">{% for b in boxes %}<option value="{{ b.id }}" {{ 'selected' if b.id==box0 }}>صندوق: {{ b.name }}</option>{% endfor %}</select>
+    <select name="bank" class="w-bank">{% for b in banks %}<option value="{{ b.id }}" {{ 'selected' if b.id==bank0 }}>{{ b.name }}{{ ' (پوز)' if b.is_pos }}</option>{% endfor %}</select>
+    <div class="w-chq" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(110px,1fr));gap:6px">
+      <input name="serial" placeholder="سریال چک"><input name="sayad" placeholder="شناسه صیادی" dir="ltr">
+      <input name="due" placeholder="سررسید 1405/01/01">{% if kind=='recv' %}<input name="cbank" placeholder="بانک صادرکننده"><input name="branch" placeholder="شعبه"><input name="owner" placeholder="صاحب حساب">{% else %}<input type="hidden" name="cbank"><input type="hidden" name="branch"><input type="hidden" name="owner">{% endif %}</div>
+    <select name="chq" class="w-out"><option value="">انتخاب چک نزد صندوق...</option>{% for c in chqs %}<option value="{{ c.id }}" data-a="{{ c.amount }}">{{ c.serial or '#'~c.id }} — {{ c.due_date }} — {{ c.pname or c.owner or '' }} — {{ '{:,}'.format(c.amount) }}</option>{% endfor %}</select>
+  </td>
+  <td data-l="پیگیری"><input name="ref"></td><td><button type="button" class="btn sm r del" tabindex="-1">×</button></td></tr></template>
+{% endif %}
+{% endblock %}
+{% block js %}{% if kind != 'transfer' %}<script>
+const R=document.getElementById('rows'),T=document.getElementById('rt'),fm=n=>Number(n||0).toLocaleString('en-US');
+function sync(tr){const m=tr.querySelector('.m').value,show=(c,on)=>tr.querySelectorAll(c).forEach(e=>{e.style.display=on?'':'none'});
+  show('.w-cash',m=='cash');show('.w-bank',m=='pos'||m=='bank'||(m=='cheque'&&{{ (kind=='pay')|tojson }}));show('.w-chq',m=='cheque');show('.w-out',m=='cheque_out');
+  const am=tr.querySelector('.am');am.readOnly=m=='cheque_out';if(m=='cheque_out'){const o=tr.querySelector('.w-out').selectedOptions[0];am.value=o&&o.dataset.a||''}calc()}
+function calc(){let t=0;R.querySelectorAll('tr').forEach((r,i)=>{r.querySelector('.i').textContent=i+1;t+=+r.querySelector('.am').value||0});document.getElementById('tot').textContent=fm(t)}
+function addRow(m,amt){const n=T.content.cloneNode(true),tr=n.querySelector('tr');tr.querySelector('.m').value=m;if(amt)tr.querySelector('.am').value=amt;
+  tr.querySelector('.m').onchange=()=>sync(tr);tr.querySelector('.w-out').onchange=()=>sync(tr);tr.querySelector('.am').oninput=calc;
+  tr.querySelector('.del').onclick=()=>{tr.remove();calc()};R.appendChild(n);sync(tr);tr.querySelector('.am').focus()}
+const P=document.getElementById('person'),INV=document.getElementById('inv');
+async function loadP(){const id=P.value,b=document.getElementById('bal');b.textContent='';if(INV)INV.length=1;if(!id)return;
+  const r=await (await fetch('/api/person-balance?id='+id)).json();b.textContent='مانده حساب: '+fm(Math.abs(r.bal))+(r.bal>0?' بدهکار':r.bal<0?' بستانکار':'');
+  if(INV){const L=await (await fetch('/api/open-invoices?person='+id)).json();L.forEach(x=>{const o=new Option(`فاکتور ${x.no} — ${x.date} — مانده ${fm(x.rem)}`,x.id);o.dataset.r=x.rem;INV.add(o)});
+    const s={{ sel_inv|tojson }};if(s){INV.value=s}}}
+P.onchange=loadP;if(INV)INV.onchange=()=>{const o=INV.selectedOptions[0],a=R.querySelector('.am');if(o&&o.dataset.r&&a&&!a.value){a.value=o.dataset.r;calc()}};
+loadP();addRow('{{ methods[0] }}');
+</script>{% endif %}{% endblock %}

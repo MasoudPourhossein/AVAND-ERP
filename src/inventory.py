@@ -94,6 +94,8 @@ def make_receipt(date, wh, kind, note, lines):
     for i, qt, c in lines:
         x("INSERT INTO receipt_lines(receipt_id,item_id,qty,unit_cost) VALUES(?,?,?,?)", (rid, i, qt, c or 0))
     add_moves("RES", rid, no, date, [(i, wh, qt, c) for i, qt, c in lines])
+    import gl
+    gl.post_receipt(rid)
     return no, rid
 
 
@@ -153,6 +155,8 @@ def receipt_delete(rid):
         return redirect(url_for("receipt_view", rid=rid))
     del_moves("RES", rid)
     x("DELETE FROM receipts WHERE id=?", (rid,))
+    import gl
+    gl.unpost("RES", rid)
     db().commit()
     flash("رسید حذف شد.", "ok")
     return redirect(url_for("receipts"))
@@ -215,6 +219,8 @@ def _save_purchase(pid=None):
     add_moves("PUR", pid, no, date, [(i, wh, sign * qt, (qt * p - d) / qt if qt else p) for i, qt, p, d, _v in lines])
     if not _no_negative("PUR", pid):
         raise ValueError("با این تغییر موجودی بعضی کالاها در انبار منفی می‌شود.")
+    import gl
+    gl.post_purchase(pid)
     return no, pid
 
 
@@ -271,7 +277,10 @@ def purchase_delete(pid):
         flash("حذف ممکن نیست: موجودی کالا در انبار منفی می‌شود.", "bad")
         return redirect(url_for("purchase_view", pid=pid))
     del_moves("PUR", pid)
+    x("UPDATE tr_docs SET pur_id=NULL WHERE pur_id=?", (pid,))
     x("DELETE FROM purchases WHERE id=?", (pid,))
+    import gl
+    gl.unpost("PUR", pid)
     db().commit()
     flash("فاکتور خرید حذف شد.", "ok")
     return redirect(url_for("purchases"))

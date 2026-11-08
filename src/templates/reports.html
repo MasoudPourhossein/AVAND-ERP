@@ -18,14 +18,25 @@
 </div></div>{% endif %}
 {% if can('rep_fin') %}<div class="card"><h3>{{ icon('scale') }} مالی</h3><div class="grid g3 tiles">
   {{ tile('/reports/fin/summary','scale','خلاصه وضعیت مالی','سود ناخالص، دریافتنی، پرداختنی، موجودی') }}
-  {{ tile('/reports/fin/trial','list','تراز اشخاص','مشتریان و تامین‌کنندگان') }}
-  {{ tile('/reports/fin/statement?as=customer','book-open','صورت‌حساب مشتری','بدهکار، بستانکار، مانده') }}
+  {{ tile('/reports/fin/trial','list','تراز اشخاص','همه اشخاص از دفتر کل') }}
+  {{ tile('/reports/fin/statement','book-open','صورت‌حساب اشخاص','مشتری، تامین‌کننده، کارمند و...') }}
   {{ tile('/reports/fin/statement?as=visitor','book-open','صورت‌حساب ویزیتور','همه فاکتورهای ویزیتور برای همه مشتریانش') }}
-  {{ tile('/reports/fin/statement?as=supplier','book-open','صورت‌حساب تامین‌کننده','خریدها و برگشت‌ها') }}
   {{ tile('/reports/fin/aging','clock','گزارش سنی مطالبات','۰-۷، ۸-۳۰، ۳۱-۶۰، ۶۱-۹۰، ۹۰+') }}
-  {{ tile('/reports/fin/daily','wallet','جمع دریافتی روزانه ویزیتورها','پوز و نقد هر ویزیتور در هر روز') }}
-  {{ tile('/reports/fin/cashbook','wallet','دفتر دریافت روزانه','صندوق و کارت‌خوان') }}
+  {{ tile('/reports/fin/daily','wallet','جمع دریافتی روزانه ویزیتورها','پوز/بانک و نقد/چک هر ویزیتور') }}
+  {{ tile('/reports/fin/cashbook','wallet','دفتر دریافت روزانه','نقد، پوز، بانک، چک') }}
   {{ tile('/reports/fin/profit','trending-up','سود ناخالص','کالا، ویزیتور و مشتری') }}
-  {{ tile('/reports/fin/payments','credit-card','ریز دریافتی‌ها','پوز و نقد') }}
+  {{ tile('/reports/fin/payments','credit-card','ریز دریافتی‌ها','همه روش‌ها') }}
+</div></div>
+<div class="card"><h3>{{ icon('book-open') }} حسابداری و خزانه</h3><div class="grid g3 tiles">
+  {{ tile('/reports/gl/trial','scale','تراز آزمایشی','گروه، کل، معین') }}
+  {{ tile('/reports/gl/pl','trending-up','صورت سود و زیان','درآمد، بهای تمام‌شده، هزینه‌ها') }}
+  {{ tile('/reports/gl/bs','scale','ترازنامه','دارایی، بدهی، حقوق مالکانه') }}
+  {{ tile('/reports/gl/journal','book-open','دفتر روزنامه','همه آرتیکل‌ها به ترتیب تاریخ') }}
+  {{ tile('/reports/gl/ledger','book-open','دفتر کل و معین','گردش و مانده هر حساب') }}
+  {{ tile('/reports/gl/tafsili','book-open','دفتر تفصیلی','اشخاص، بانک، صندوق، مرکز هزینه') }}
+  {{ tile('/reports/gl/cc','list','مراکز هزینه','گردش حساب‌ها به تفکیک مرکز') }}
+  {{ tile('/cheques?kind=recv','file-text','چک‌های دریافتی','سررسید و وضعیت') }}
+  {{ tile('/cheques?kind=pay','file-text','چک‌های پرداختی','سررسید و وضعیت') }}
+  {{ tile('/treasury','wallet','اسناد خزانه','دریافت، پرداخت، انتقال') }}
 </div></div>{% endif %}
 {% endblock %}

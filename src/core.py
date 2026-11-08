@@ -55,7 +55,7 @@ def db():
 DOC = {"RES": "رسید انبار", "PUR": "فاکتور خرید", "PRT": "برگشت از خرید", "TRF": "حواله بین انبار", "AMN": "فاکتور امانی",
        "FCT": "فاکتور فروش", "SRT": "برگشت از فروش", "MRJ": "برگه مرجوعی", "DRY": "سند دریافت"}
 PAY_TERMS = ["نقدی", "نسیه", "چک", "کارت‌خوان", "اقساطی", "نقد و نسیه"]
-METHOD = {"pos": "کارت‌خوان (پوز)", "cash": "نقد"}
+METHOD = {"pos": "کارت‌خوان (پوز)", "cash": "نقد", "bank": "واریز / حواله بانکی", "cheque": "چک"}
 PERSON_KINDS = {"customer": "مشتری", "supplier": "تامین‌کننده", "visitor": "ویزیتور", "employee": "کارمند", "other": "سایر"}
 
 # ---------------- permissions
@@ -63,7 +63,9 @@ PERMS = {
     "amani": "صدور فاکتور امانی",
     "settle": "تسویه امانی و صدور فاکتور قطعی",
     "sale": "فاکتور فروش مستقیم",
-    "payment": "ثبت دریافتی (پوز / نقد)",
+    "payment": "ثبت دریافتی روی فاکتور فروش",
+    "treasury": "خزانه: دریافت، پرداخت، چک، بانک و صندوق",
+    "accounting": "حسابداری: سند دستی و دفاتر",
     "purchase": "خرید از تامین‌کننده",
     "receipt": "رسید انبار",
     "transfer": "حواله بین انبار",
@@ -80,7 +82,7 @@ PRESETS = {
     "admin": ("مدیر کل", list(PERMS)),
     "sales": ("کاربر فروش", ["amani", "settle", "sale", "payment", "persons", "rep_sales", "rep_stock"]),
     "stock": ("انباردار", ["receipt", "transfer", "purchase", "rep_stock"]),
-    "acct": ("حسابدار", ["payment", "purchase", "persons", "rep_sales", "rep_fin", "rep_stock"]),
+    "acct": ("حسابدار", ["payment", "treasury", "accounting", "purchase", "persons", "rep_sales", "rep_fin", "rep_stock"]),
     "viewer": ("فقط مشاهده گزارش", ["rep_stock", "rep_sales", "rep_fin"]),
 }
 LEGACY_PERM = {"base": ["items", "persons", "setup"]}
@@ -114,6 +116,13 @@ ACCESS = {
     "invoice_remove": (["users"], ["users"]), "payment_delete": (["void"], ["void"]),
     "users": (["users"], ["users"]), "user_edit": (["users"], ["users"]), "user_delete": (["users"], ["users"]),
     "backup": (["users"], []), "settings": (["users"], ["users"]),
+    "tr_list": (["treasury", "rep_fin"], []), "tr_new": (["treasury"], ["treasury"]), "tr_view": (["treasury", "rep_fin", "payment"], []),
+    "tr_delete": (["void"], ["void"]), "inv_receive": (["payment", "treasury"], ["payment", "treasury"]),
+    "cheques": (["treasury", "rep_fin"], []), "cheque_view": (["treasury", "rep_fin"], ["treasury"]),
+    "cash_banks": (["treasury", "setup", "rep_fin"], ["treasury", "setup"]), "api_open_invoices": (["treasury", "payment"], []),
+    "api_person_balance": (["treasury", "payment", "rep_fin", "persons"], []),
+    "vouchers": (["accounting", "rep_fin"], []), "voucher_view": (["accounting", "rep_fin"], []), "voucher_new": (["accounting"], ["accounting"]),
+    "voucher_edit": (["accounting"], ["accounting"]), "voucher_delete": (["void"], ["void"]), "repost": (["users"], ["users"]),
 }
 
 
@@ -173,7 +182,7 @@ CHART = [  # code, name, level, parent, nature, sys_key
     ("8204", "کارمزد بانکی", 3, "82", "D", "bank_fee"),
     ("83", "سایر هزینه‌ها", 2, "8", "D", None), ("8301", "کسری و اضافات انبار", 3, "83", "D", "stock_diff"),
 ]
-SCHEMA_VERSION = 1
+SCHEMA_VERSION = 3
 
 
 def init_db():
@@ -182,16 +191,41 @@ def init_db():
         c = D.conn()
         c.exec_driver_sql("SELECT pg_advisory_lock(424243)")
         try:
+            if v1("SELECT COUNT(*) FROM pg_class c JOIN pg_namespace n ON n.oid=c.relnamespace WHERE c.relname='payments' AND c.relkind='r' AND n.nspname='public'"):
+                c.exec_driver_sql("ALTER TABLE payments RENAME TO payments_legacy")
             for stmt in [s for s in sql.split(";") if s.strip()]:
                 c.exec_driver_sql(stmt)
+            if not v1("SELECT COUNT(*) FROM cash_boxes"):
+                x("INSERT INTO cash_boxes(code,name,is_default) VALUES('C01','صندوق مرکزی',1)")
+            if not v1("SELECT COUNT(*) FROM banks"):
+                x("INSERT INTO banks(code,name,is_pos,is_default) VALUES('B01','حساب بانکی / کارت‌خوان',1,1)")
             if not v1("SELECT COUNT(*) FROM warehouses"):
                 x("INSERT INTO warehouses(code,name,is_default) VALUES('W01','انبار مرکزی',1)")
-            if not v1("SELECT COUNT(*) FROM accounts"):
-                ids = {}
-                for code, name, lvl, parent, nat, key in CHART:
-                    ids[code] = x("INSERT INTO accounts(code,name,level,parent_id,nature,sys_key) VALUES(?,?,?,?,?,?)",
-                                  (code, name, lvl, ids.get(parent), nat, key))
-            if not v1("SELECT COUNT(*) FROM schema_info"):
+            ids = {r["code"]: r["id"] for r in q("SELECT id, code FROM accounts")}
+            for code, name, lvl, parent, nat, key in CHART:   # seed / complete the standard chart (keeps user edits)
+                if key and v1("SELECT COUNT(*) FROM accounts WHERE sys_key=?", (key,)):
+                    continue
+                if code in ids:
+                    if key:
+                        x("UPDATE accounts SET sys_key=? WHERE id=? AND sys_key IS NULL", (key, ids[code]))
+                    continue
+                ids[code] = x("INSERT INTO accounts(code,name,level,parent_id,nature,sys_key) VALUES(?,?,?,?,?,?)",
+                              (code, name, lvl, ids.get(parent), nat, key))
+            if v1("SELECT COUNT(*) FROM pg_class WHERE relname='payments_legacy'"):
+                box, bank = default_box(), default_bank()
+                for p in q("""SELECT p.*, s.customer_id, s.visitor_id FROM payments_legacy p JOIN sales_invoices s ON s.id=p.inv_id ORDER BY p.id"""):
+                    did = x("INSERT INTO tr_docs(no,kind,date,person_id,inv_id,visitor_id,created_by) VALUES(?,'recv',?,?,?,?,?)",
+                            (p["no"], p["date"], p["customer_id"], p["inv_id"], p["visitor_id"], p["created_by"]))
+                    x("INSERT INTO tr_lines(doc_id,method,amount,box_id,bank_id,ref) VALUES(?,?,?,?,?,?)",
+                      (did, p["method"], p["amount"], box if p["method"] == "cash" else None, bank if p["method"] != "cash" else None, p["ref"]))
+                c.exec_driver_sql("DROP TABLE payments_legacy")
+            x("""INSERT INTO counters(kind,last) SELECT 'TRD', COALESCE(MAX(no),1000) FROM tr_docs
+                 ON CONFLICT(kind) DO UPDATE SET last=GREATEST(counters.last, excluded.last)""")
+            ver = v1("SELECT MAX(version) FROM schema_info") or 0
+            if ver < SCHEMA_VERSION:
+                if ver:
+                    import gl
+                    gl.repost_all()
                 x("INSERT INTO schema_info(version) VALUES(?)", (SCHEMA_VERSION,))
             # legacy permission names
             for r in q("SELECT id, perms FROM users WHERE perms LIKE '%base%'"):
@@ -202,6 +236,10 @@ def init_db():
                 if "users" in ps:
                     ps = set(PERMS)
                 x("UPDATE users SET perms=? WHERE id=?", (",".join(sorted(ps)), r["id"]))
+            for r in q("SELECT id, perms FROM users WHERE perms LIKE '%users%'"):   # admins get every (new) permission
+                ps = set(filter(None, r["perms"].split(",")))
+                if ps != set(PERMS) and "users" in ps:
+                    x("UPDATE users SET perms=? WHERE id=?", (",".join(sorted(set(PERMS))), r["id"]))
             D.commit()
         except Exception:
             D.rollback()
@@ -243,6 +281,14 @@ def uid():
 def uname(i):
     r = q("SELECT COALESCE(NULLIF(fullname,''),username) n FROM users WHERE id=?", (i,), one=True) if i else None
     return r["n"] if r else None
+
+
+def default_box():
+    return v1("SELECT id FROM cash_boxes WHERE active=1 ORDER BY is_default DESC, id LIMIT 1") or None
+
+
+def default_bank():
+    return v1("SELECT id FROM banks WHERE active=1 ORDER BY is_default DESC, id LIMIT 1") or None
 
 
 def default_wh():
@@ -317,6 +363,9 @@ INV_SQL = """
   s.qty_total AS sold_qty,
   COALESCE((SELECT SUM(amount) FROM payments WHERE inv_id=s.id AND method='pos'),0) AS pos,
   COALESCE((SELECT SUM(amount) FROM payments WHERE inv_id=s.id AND method='cash'),0) AS cash,
+  COALESCE((SELECT SUM(amount) FROM payments WHERE inv_id=s.id AND method='bank'),0) AS bank,
+  COALESCE((SELECT SUM(amount) FROM payments WHERE inv_id=s.id AND method='cheque'),0) AS chq,
+  COALESCE((SELECT SUM(amount) FROM payments WHERE inv_id=s.id),0) AS paid,
   c.no AS cons_no, c.return_no, r.no AS ret_of_no
  FROM v_si s JOIN persons cu ON cu.id=s.customer_id LEFT JOIN persons v ON v.id=s.visitor_id
  JOIN warehouses w ON w.id=s.wh_id LEFT JOIN consignments c ON c.id=s.cons_id LEFT JOIN sales_invoices r ON r.id=s.ret_of
@@ -332,9 +381,8 @@ CONS_SQL = """
 """
 # receivable balance helpers: invoice total minus payments
 # signed receivable effect of each sales doc (returns negative)
-CUST_BAL = """(COALESCE((SELECT SUM(total*sg) FROM v_si s WHERE s.customer_id={p}),0)
- - COALESCE((SELECT SUM(pa.amount) FROM payments pa JOIN sales_invoices s ON s.id=pa.inv_id WHERE s.customer_id={p}),0))"""
-SUP_BAL = "COALESCE((SELECT SUM(total*sg) FROM v_pu u WHERE u.supplier_id={p}),0)"
+CUST_BAL = "(SELECT COALESCE(SUM(debit-credit),0) FROM voucher_lines WHERE person_id={p})"
+SUP_BAL = "COALESCE((SELECT SUM(total*sg) FROM v_pu u WHERE u.supplier_id={p}),0)"   # purchased (not balance)
 
 
 def vat_default():
@@ -399,7 +447,7 @@ def inv_paid(inv_id):
 def inv_status(r):
     if r.get("kind") == "return":
         return "برگشت از فروش", "warn"
-    diff = r["total"] - r["pos"] - r["cash"]
+    diff = r["total"] - r["paid"]
     if diff == 0:
         return "تسویه کامل", "ok"
     return ("کسری دریافت", "bad") if diff > 0 else ("دریافت اضافه", "warn")

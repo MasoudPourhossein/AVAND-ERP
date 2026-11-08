@@ -18,7 +18,7 @@
       <label style="display:flex;gap:10px;align-items:flex-start;color:var(--txt);font-size:14px;padding:12px;border:1px solid var(--line);border-radius:10px;margin-bottom:14px">
         <input type="radio" name="action" value="delete" {{ 'checked' if action=='delete' }} style="width:auto;margin-top:6px">
         <span><b>حذف کامل</b><br><span class="muted">{{ 'فاکتورها و فاکتور امانی حذف می‌شوند و' if c.cons_id else 'فاکتور حذف می‌شود و' }} کالا به موجودی انبار برمی‌گردد.</span></span></label>
-      <div class="flash bad">همه اسناد دریافت ({{ pays|length }} سند، جمع {{ pays|sum(attribute='amount')|m }} ریال) حذف می‌شوند و مانده حساب‌ها و گزارش‌های مالی تغییر می‌کنند.</div>
+      <div class="flash bad">اسناد دریافت ({{ pays|length }} سند، جمع {{ pays|sum(attribute='amount')|m }} ریال) حذف نمی‌شوند و «علی‌الحساب» روی حساب مشتری می‌مانند؛ سند حسابداری فاکتور حذف و مانده‌ها تغییر می‌کنند.</div>
       <label style="display:flex;gap:8px;align-items:center;color:var(--txt);font-size:14px;margin-bottom:14px"><input type="checkbox" name="ok1" value="1" style="width:auto"> هشدار بالا را خواندم و ادامه می‌دهم.</label>
       <div class="bar"><a class="btn s" href="/invoices/{{ c.id }}">انصراف</a><span class="sp"></span><button class="btn o">ادامه به هشدار دوم</button></div>
     {% else %}

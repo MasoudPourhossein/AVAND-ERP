@@ -152,6 +152,104 @@ assert one(f"SELECT customer_id FROM sales_invoices WHERE cons_id={cc}") == c1 a
 for r_ in reps:
     G(r_ + ("&" if "?" in r_ else "?") + F)
 print("V2 OK")
+# ================= v3: treasury + general ledger
+def gl_ok():
+    assert one("SELECT COALESCE(SUM(debit),0)-COALESCE(SUM(credit),0) FROM voucher_lines") == 0
+    assert one("SELECT COUNT(*) FROM (SELECT voucher_id FROM voucher_lines GROUP BY voucher_id HAVING SUM(debit)<>SUM(credit)) z") == 0
+def accbal(key, **kw):
+    w = "".join(f" AND vl.{k}={v}" for k, v in kw.items())
+    return one(f"SELECT COALESCE(SUM(vl.debit-vl.credit),0) FROM voucher_lines vl JOIN accounts a ON a.id=vl.account_id WHERE a.sys_key='{key}'{w}")
+gl_ok()
+inv_c1 = one(f"SELECT COALESCE(SUM(total*sg),0) FROM v_si WHERE customer_id={c1}") - one(f"SELECT COALESCE(SUM(amount),0) FROM payments WHERE person_id={c1}")
+assert accbal("receivable", person_id=c1) == inv_c1, (accbal("receivable", person_id=c1), inv_c1)
+assert accbal("payable", person_id=sup) == -one(f"SELECT SUM(total*sg) FROM v_pu WHERE supplier_id={sup}")
+assert accbal("sales") == -one("SELECT SUM(gross) FROM v_si WHERE kind<>'return'")
+box, bank = one("SELECT id FROM cash_boxes WHERE code='C01'"), one("SELECT id FROM banks WHERE code='B01'")
+P("/cash-banks", {"t": "bank", "code": "B02", "name": "ملت جاری", "bank_name": "ملت"}); bank2 = one("SELECT id FROM banks WHERE code='B02'")
+P("/cash-banks", {"t": "box", "code": "C02", "name": "تنخواه"}); box2 = one("SELECT id FROM cash_boxes WHERE code='C02'")
+G("/treasury/new/recv"); G("/treasury/new/pay"); G("/treasury/new/transfer")
+rc2 = accbal("receivable", person_id=c2)
+r = P("/treasury/new/recv", {"date": "1405/08/12", "person": c2, "method": ["cash", "cheque"], "amount": [1000, 2000], "box": [box, box], "bank": [bank, bank],
+                             "serial": ["", "S1"], "sayad": ["", "123"], "due": ["", "1405/09/01"], "cbank": ["", "ملی"], "branch": ["", ""], "owner": ["", ""],
+                             "chq": ["", ""], "ref": ["", ""], "note": "علی‌الحساب"})
+assert "ثبت شد" in T(r), T(r)[:500]
+d1 = one("SELECT MAX(id) FROM tr_docs")
+assert accbal("receivable", person_id=c2) == rc2 - 3000 and accbal("cheque_recv") == 2000 and accbal("cash", box_id=box) >= 1000
+ch1 = one("SELECT id FROM cheques WHERE serial='S1'")
+assert one(f"SELECT status FROM cheques WHERE id={ch1}") == "in_box"
+assert "عملیات بعدی" not in T(G(f"/cheques/{ch1}"))
+P(f"/cheques/{ch1}", {"to_status": "in_bank", "date": "1405/08/13", "bank": bank2})
+assert accbal("cheque_recv") == 0 and accbal("cheque_bank", bank_id=bank2) == 2000
+assert "عملیات بعدی" in T(P(f"/treasury/{d1}/delete", {}))          # cheque moved -> doc can't be deleted
+P(f"/cheques/{ch1}", {"action": "undo"}); assert one(f"SELECT status FROM cheques WHERE id={ch1}") == "in_box" and accbal("cheque_bank") == 0
+P(f"/cheques/{ch1}", {"to_status": "in_bank", "date": "1405/08/13", "bank": bank2})
+P(f"/cheques/{ch1}", {"to_status": "cleared", "date": "1405/09/01"})
+assert one(f"SELECT status FROM cheques WHERE id={ch1}") == "cleared" and accbal("bank", bank_id=bank2) == 2000 and accbal("cheque_bank") == 0
+# cheque from c1, spent to supplier together with cash and our own cheque
+P("/treasury/new/recv", {"date": "1405/08/12", "person": c1, "method": ["cheque"], "amount": [1500], "box": [box], "bank": [bank], "serial": ["S2"], "sayad": [""],
+                         "due": ["1405/09/10"], "cbank": ["سپه"], "branch": [""], "owner": [""], "chq": [""], "ref": [""]})
+ch2 = one("SELECT id FROM cheques WHERE serial='S2'")
+pay0 = accbal("payable", person_id=sup)
+r = P("/treasury/new/pay", {"date": "1405/08/14", "person": sup, "method": ["cheque_out", "cash", "cheque"], "amount": ["", 500, 3000], "box": [box, box, box],
+                            "bank": [bank, bank, bank2], "serial": ["", "", "P1"], "sayad": ["", "", ""], "due": ["", "", "1405/10/01"], "cbank": ["", "", ""],
+                            "branch": ["", "", ""], "owner": ["", "", ""], "chq": [ch2, "", ""], "ref": ["", "", ""]})
+assert "ثبت شد" in T(r), T(r)[:500]
+assert accbal("payable", person_id=sup) == pay0 + 5000 and accbal("cheque_pay", bank_id=bank2) == -3000
+assert one(f"SELECT status FROM cheques WHERE id={ch2}") == "spent" and one(f"SELECT holder_id FROM cheques WHERE id={ch2}") == sup
+p1 = one("SELECT id FROM cheques WHERE serial='P1'")
+P(f"/cheques/{p1}", {"to_status": "cleared", "date": "1405/10/01"})
+assert accbal("cheque_pay") == 0 and accbal("bank", bank_id=bank2) == -1000
+rc1 = accbal("receivable", person_id=c1)
+P(f"/cheques/{ch2}", {"to_status": "bounced", "date": "1405/09/12"})       # supplier returned it
+assert accbal("receivable", person_id=c1) == rc1 + 1500 and accbal("payable", person_id=sup) == pay0 + 3500
+# transfer box -> bank, expense payment with cost center, salary to employee
+P("/cost-centers", {"code": "CC1", "name": "شعبه مرکزی"}); cc1 = one("SELECT id FROM cost_centers WHERE code='CC1'")
+bx0 = accbal("cash", box_id=box)
+P("/treasury/new/transfer", {"date": "1405/08/15", "from": f"box:{box}", "to": f"bank:{bank}", "amount": 500})
+assert accbal("cash", box_id=box) == bx0 - 500
+rent = one("SELECT id FROM accounts WHERE code='8202'")
+P("/treasury/new/pay", {"date": "1405/08/15", "acc_id": rent, "cc_id": cc1, "method": ["cash"], "amount": [200], "box": [box], "bank": [bank], "serial": [""],
+                        "sayad": [""], "due": [""], "cbank": [""], "branch": [""], "owner": [""], "chq": [""], "ref": [""], "note": "اجاره آبان"})
+assert one(f"SELECT SUM(debit) FROM voucher_lines WHERE account_id={rent} AND cc_id={cc1}") == 200
+P("/persons", {"name": "کارمند یک", "is_employee": "1", "active": "1"}); emp = one("SELECT id FROM persons WHERE is_employee=1")
+P("/treasury/new/pay", {"date": "1405/08/30", "person": emp, "method": ["bank"], "amount": [700], "box": [box], "bank": [bank], "serial": [""],
+                        "sayad": [""], "due": [""], "cbank": [""], "branch": [""], "owner": [""], "chq": [""], "ref": ["حقوق"]})
+assert accbal("salary_pay", person_id=emp) == 700
+assert "شخص یا حساب" in T(P("/treasury/new/pay", {"date": "1405/08/30", "method": ["cash"], "amount": [1], "box": [box], "bank": [bank], "chq": [""]}))
+# manual voucher (accrue salary), unbalanced rejected
+sal = one("SELECT id FROM accounts WHERE sys_key='salary'"); salp = one("SELECT id FROM accounts WHERE sys_key='salary_pay'")
+assert "تراز نیست" in T(P("/vouchers/new", {"date": "1405/08/30", "acc": [sal, salp], "dr": [700, ""], "cr": ["", 600], "person": ["", emp], "bank": ["", ""], "box": ["", ""], "cc": ["", ""], "ldescr": ["", ""]}))
+P("/vouchers/new", {"date": "1405/08/30", "descr": "حقوق آبان", "acc": [sal, salp], "dr": [700, ""], "cr": ["", 700], "person": ["", emp], "bank": ["", ""],
+                    "box": ["", ""], "cc": [cc1, ""], "ldescr": ["", ""]})
+mv = one("SELECT MAX(id) FROM vouchers WHERE kind='manual'")
+assert accbal("salary_pay", person_id=emp) == 0
+G(f"/vouchers/{mv}"); G(f"/vouchers/{mv}/edit")
+# invoice quick receive by cheque + deletion of a cash doc
+inv_s = one(f"SELECT MIN(id) FROM sales_invoices WHERE customer_id={c1}")
+P(f"/invoices/{inv_s}", {"method": "cheque", "amount": 100, "serial": "S3", "due": "1405/09/20", "date": "1405/08/16"})
+assert one("SELECT status FROM cheques WHERE serial='S3'") == "in_box" and one(f"SELECT inv_id FROM tr_docs WHERE id=(SELECT MAX(id) FROM tr_docs)") == inv_s
+dcash = one("SELECT MAX(d.id) FROM tr_docs d JOIN tr_lines l ON l.doc_id=d.id WHERE l.method='transfer'")
+P(f"/treasury/{dcash}/delete", {}); assert accbal("cash", box_id=box) == bx0 - 200 + 0
+gl_ok()
+# reports / pages
+F3 = "from=1405/01/01&to=1405/12/29"
+for u in ["/treasury", "/treasury?kind=recv", f"/treasury/{d1}", "/cheques?kind=recv", "/cheques?kind=pay&status=cleared", f"/cheques/{ch2}", "/cash-banks",
+          "/vouchers", "/vouchers?kind=manual", "/reports/gl/journal", "/reports/gl/ledger", f"/reports/gl/ledger?acc={rent}", "/reports/gl/tafsili",
+          f"/reports/gl/tafsili?t=bank&id={bank2}", f"/reports/gl/tafsili?t=cc&id={cc1}", "/reports/gl/trial", "/reports/gl/trial?level=1", "/reports/gl/pl",
+          "/reports/gl/bs", "/reports/gl/cc", f"/reports/fin/statement?person={emp}", f"/reports/fin/statement?person={sup}", f"/persons/{emp}",
+          f"/api/open-invoices?person={c1}", f"/api/person-balance?id={c1}", "/reports/fin/trial", "/reports/fin/summary", "/reports/fin/cashbook",
+          "/reports/fin/payments", "/reports/fin/daily", "/reports/fin/aging", "/reports/visitors", f"/print/invoice/{inv_s}"]:
+    G(u + ("&" if "?" in u else "?") + F3)
+for u in ["/reports/gl/trial?fmt=xlsx", "/reports/gl/pl?fmt=pdf", "/cheques?kind=recv&fmt=xlsx", "/treasury?fmt=pdf"]:
+    assert cl.get(u + "&" + F3).status_code == 200, u
+tb = T(G("/reports/gl/trial?" + F3)); assert "اختلاف (باید صفر باشد) 0" in tb, tb[:300]
+assert "اختلاف 0" in T(G("/reports/gl/bs?to=1405/12/29"))
+assert one(f"SELECT COUNT(*) FROM tr_docs WHERE inv_id={inv_s}") >= 1
+# repost is idempotent
+snap = lambda: one("SELECT string_agg(account_id||':'||COALESCE(person_id,0)||':'||COALESCE(bank_id,0)||':'||COALESCE(box_id,0)||':'||s, ',' ORDER BY 1) FROM (SELECT account_id, person_id, bank_id, box_id, SUM(debit-credit) s FROM voucher_lines GROUP BY 1,2,3,4) z")
+s0 = snap(); P("/vouchers/repost", {}); assert snap() == s0; gl_ok()
+assert one(f"SELECT COUNT(*) FROM vouchers WHERE id={mv}") == 1
+print("V3 OK")
 # permissions
 P("/users", {"username": "anbar", "password": "pass123", "role": "stock", "perm": ["receipt", "transfer", "purchase", "rep_stock"]})
 ac = A.app.test_client(); P("/login", {"username": "anbar", "password": "pass123"}, ac)
@@ -167,4 +265,6 @@ no_d = one(f"SELECT no FROM sales_invoices WHERE id={iid}")
 P(f"/invoices/{iid}/remove", {"step": "1", "action": "delete", "ok1": "1"})
 P(f"/invoices/{iid}/remove", {"step": "2", "action": "delete", "confirm": no_d, "ok2": "1"})
 assert one(f"SELECT SUM(qty) FROM stock_moves WHERE item_id={k1} AND wh_id={w2}") == 100
+gl_ok()
+assert one(f"SELECT COUNT(*) FROM vouchers WHERE src_type='FCT' AND src_id={iid}") == 0
 print("SMOKE OK")

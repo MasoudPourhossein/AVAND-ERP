@@ -15,8 +15,11 @@
     {% if 'wh' in spec.filters %}<select name="wh"><option value="">همه انبارها</option>{% for w in whs %}<option value="{{ w.id }}" {{ 'selected' if w.id==request.args.get('wh')|int(0) }}>{{ w.name }}</option>{% endfor %}</select>{% endif %}
     {% if 'person' in spec.filters %}<input type="hidden" name="as" value="{{ as_ }}"><select name="person">{% for c in persons %}<option value="{{ c.id }}" {{ 'selected' if c.id==person_id }}>{{ c.code }} - {{ c.name }}</option>{% endfor %}</select>{% endif %}
     {% if 'method' in spec.filters %}<select name="method"><option value="">همه روش‌ها</option>{% for k,v in METHOD.items() %}<option value="{{k}}" {{ 'selected' if request.args.get('method')==k }}>{{v}}</option>{% endfor %}</select>{% endif %}
-    {% if spec.filters %}<button class="btn">نمایش</button>{% endif %}
+    {% for sname, opts, sv in spec.selects or [] %}<select name="{{ sname }}">{% for k, lab in opts %}<option value="{{ k }}" {{ 'selected' if k|string==sv|string }}>{{ lab }}</option>{% endfor %}</select>{% endfor %}
+    {% for iname, ilab, iv in spec.inputs or [] %}<label style="margin:0">{{ ilab }}</label><input name="{{ iname }}" value="{{ iv }}" size="10">{% endfor %}
+    {% if spec.filters or spec.selects or spec.inputs %}<button class="btn">نمایش</button>{% endif %}
     <span class="sp"></span>
+    {% for href, lab, cl in spec.actions or [] %}<a class="btn {{ cl }}" href="{{ href }}">{{ icon('plus') }} {{ lab }}</a>{% endfor %}
     <a class="btn s" href="{{ xurl('xlsx') }}">{{ icon('file-spreadsheet') }} Excel</a>
     <a class="btn s" href="{{ xurl('pdf') }}">{{ icon('file-text') }} PDF</a>
     <button type="button" class="btn s" onclick="print()">{{ icon('printer') }} چاپ</button>

@@ -29,7 +29,7 @@ def sale_lines(iid):
     return item_lines("sales_lines", "inv_id", iid)
 
 
-def create_invoice(kind, date, customer, visitor, wh, lines, discount=0, note=None, cons_id=None, extra=None, iid=None):
+def create_invoice(kind, date, customer, visitor, wh, lines, discount=0, note=None, cons_id=None, extra=None, iid=None, cost_date=None):
     """lines: (item_id, qty, price[, disc, vat_rate]). direct -> stock out (FCT); return -> stock in (SRT); consign -> no move.
     iid given = replace an existing invoice's header and lines (number kept)."""
     ex = extra or {}
@@ -54,11 +54,13 @@ def create_invoice(kind, date, customer, visitor, wh, lines, discount=0, note=No
                    VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?)""", (no,) + hdr + (uid(),))
     for i, qt, p, d, vr in full:
         x("INSERT INTO sales_lines(inv_id,item_id,qty,price,disc,vat_rate,vat,cost) VALUES(?,?,?,?,?,?,?,?)",
-          (iid, i, qt, p, d, vr, line_vat(qt, p, d, vr), buy_at(i, date) or 0))
+          (iid, i, qt, p, d, vr, line_vat(qt, p, d, vr), buy_at(i, cost_date or date) or 0))
     if kind == "direct":
         add_moves("FCT", iid, no, date, [(i, wh, -qt, 0) for i, qt, *_ in full])
     elif kind == "return":
         add_moves("SRT", iid, no, date, [(i, wh, qt, buy_at(i, date) or 0) for i, qt, *_ in full])
+    import gl
+    gl.post_sale(iid)
     return no, iid
 
 
@@ -103,6 +105,8 @@ def amani_new():
             for i, qt, _ in lines:
                 x("INSERT INTO cons_lines(cons_id,item_id,qty,price) VALUES(?,?,?,?)", (cid, i, qt, price_at(i, date)))
             add_moves("AMN", cid, no, date, [(i, wh, -qt, 0) for i, qt, _ in lines])
+            import gl
+            gl.post_cons(cid)
             db().commit()
             flash(f"فاکتور امانی شماره {no} صادر شد.", "ok")
             return redirect(url_for("amani_view", cid=cid))
@@ -146,6 +150,8 @@ def amani_delete(cid):
         return redirect(url_for("amani_view", cid=cid))
     del_moves("AMN", cid)
     x("DELETE FROM consignments WHERE id=?", (cid,))
+    import gl
+    gl.post_cons(cid)
     db().commit()
     flash(f"فاکتور امانی {c['no']} حذف شد و کالا به انبار برگشت.", "ok")
     return redirect(url_for("amani_list"))
@@ -215,13 +221,15 @@ def amani_settle(cid):
             nos = []
             for cust, m in merged.items():
                 no, _ = create_invoice("consign", date, cust, inv_visitor, c["wh_id"], [(i, qp[0], qp[1]) for i, qp in m.items()],
-                                       note=f"عطف به امانی {c['no']}", cons_id=cid)
+                                       note=f"عطف به امانی {c['no']}", cons_id=cid, cost_date=c["date"])
                 nos.append(no)
             rno = next_no("MRJ") if any(d["ret"] for d in L.values()) else None
             for lid, d in L.items():
                 x("UPDATE cons_lines SET returned=?, price=? WHERE id=?", (d["ret"], d["price"], lid))
             add_moves("MRJ", cid, rno, date, [(d["l"]["item_id"], c["wh_id"], d["ret"], 0) for d in L.values() if d["ret"]])
             x("UPDATE consignments SET status='settled', settle_date=?, return_no=?, settled_by=? WHERE id=?", (date, rno, uid(), cid))
+            import gl
+            gl.post_cons(cid)
             db().commit()
             msg = f"امانی {c['no']} تسویه شد."
             if nos:
@@ -354,7 +362,7 @@ def invoices():
         sql += " AND s.customer_id=?"; args.append(cid)
     rows = q(sql + " ORDER BY s.date DESC, s.no DESC", args)
     if only == "diff":
-        rows = [r for r in rows if r["total"] != r["pos"] + r["cash"]]
+        rows = [r for r in rows if r["kind"] != "return" and r["total"] != r["paid"]]
     return render_template("invoices.html", rows=rows, f=f, t=t, vid=vid, cid=cid, only=only, visitors=_visitors(), customers=_customers())
 
 
@@ -362,34 +370,23 @@ def invoices():
 def invoice(iid):
     s = q(INV_SQL + " WHERE s.id=?", (iid,), one=True) or abort(404)
     if request.method == "POST":
+        from treasury import quick_receive
         if s["kind"] == "return":
             flash("برای برگشت از فروش دریافتی ثبت نمی‌شود.", "bad")
             return redirect(url_for("invoice", iid=iid))
-        amount, method = to_int(request.form.get("amount")), request.form.get("method")
-        date = norm_date(request.form.get("date")) or today_j()
-        if amount <= 0 or method not in METHOD:
-            flash("مبلغ و نوع دریافت معتبر لازم است.", "bad")
-        elif date < s["date"]:
-            flash("تاریخ دریافت نمی‌تواند قبل از تاریخ فاکتور باشد.", "bad")
-        else:
-            no = next_no("DRY")
-            x("INSERT INTO payments(no,inv_id,date,method,amount,ref,created_by) VALUES(?,?,?,?,?,?,?)",
-              (no, iid, date, method, amount, request.form.get("ref"), uid()))
+        try:
+            no = quick_receive(s, request.form)
             db().commit()
             flash(f"سند دریافت شماره {no} ثبت شد.", "ok")
+        except ValueError as e:
+            db().rollback()
+            flash(str(e), "bad")
         return redirect(url_for("invoice", iid=iid))
     pays = q("""SELECT p.*, COALESCE(NULLIF(u.fullname,''),u.username) uname FROM payments p LEFT JOIN users u ON u.id=p.created_by
                 WHERE inv_id=? ORDER BY date, p.id""", (iid,))
-    return render_template("invoice.html", c=s, lines=sale_lines(iid), pays=pays)
-
-
-@app.post("/payments/<int:pid>/delete")
-def payment_delete(pid):
-    p = q("SELECT * FROM payments WHERE id=?", (pid,), one=True) or abort(404)
-    x("DELETE FROM payments WHERE id=?", (pid,))
-    db().commit()
-    flash(f"سند دریافت {p['no']} حذف شد.", "ok")
-    return redirect(url_for("invoice", iid=p["inv_id"]))
+    from core import default_box, default_bank
+    return render_template("invoice.html", c=s, lines=sale_lines(iid), pays=pays, boxes=q("SELECT * FROM cash_boxes WHERE active=1 ORDER BY is_default DESC, code"),
+                           banks=q("SELECT * FROM banks WHERE active=1 ORDER BY is_default DESC, code"))
 
 
 @app.route("/print/invoice/<int:iid>")
@@ -406,6 +403,7 @@ def invoice_remove(iid):
     group = q(INV_SQL + " WHERE s.cons_id=? ORDER BY s.no", (cid,)) if cid else [s]
     ids = [r["id"] for r in group]
     pays = q("SELECT * FROM payments WHERE inv_id = ANY(?)", (ids,))
+    import gl
     actions = ("unsettle", "delete") if cid else ("delete",)
     action = request.values.get("action") if request.values.get("action") in actions else actions[0]
     step = 1
@@ -427,22 +425,25 @@ def invoice_remove(iid):
                 if s["kind"] == "return" and not _can_remove_moves("SRT", iid):
                     flash("حذف ممکن نیست: موجودی کالا در انبار منفی می‌شود.", "bad")
                     return redirect(url_for("invoice", iid=iid))
-                x("DELETE FROM payments WHERE inv_id = ANY(?)", (ids,))
+                x("UPDATE tr_docs SET inv_id=NULL WHERE inv_id = ANY(?)", (ids,))   # receipts stay on the customer's account
                 x("UPDATE sales_invoices SET ret_of=NULL WHERE ret_of = ANY(?)", (ids,))
                 for i in ids:
                     del_moves("FCT", i)
                     del_moves("SRT", i)
+                    gl.unpost("FCT", i)
                 x("DELETE FROM sales_invoices WHERE id = ANY(?)", (ids,))
                 if cid:
                     del_moves("MRJ", cid)
                     if action == "delete":
                         del_moves("AMN", cid)
                         x("DELETE FROM consignments WHERE id=?", (cid,))
+                        gl.post_cons(cid)
                         db().commit()
                         flash(f"امانی {s['cons_no']} و {len(ids)} فاکتور آن کامل حذف شد؛ کالا به انبار برگشت.", "ok")
                         return redirect(url_for("invoices"))
                     x("UPDATE cons_lines SET returned=0 WHERE cons_id=?", (cid,))
                     x("UPDATE consignments SET status='open', settle_date=NULL, return_no=NULL, settled_by=NULL WHERE id=?", (cid,))
+                    gl.post_cons(cid)
                     db().commit()
                     flash(f"{len(ids)} فاکتور باطل شد و سند به امانی باز {s['cons_no']} برگشت.", "ok")
                     return redirect(url_for("amani_view", cid=cid))

@@ -1,0 +1,33 @@
+{% extends "base.html" %}{% from "_m.html" import icon %}{% block h %}{{ 'ویرایش سند ' ~ v.no if v.id else 'سند حسابداری دستی' }}{% endblock %}
+{% block body %}{% set F = request.form %}
+<form method="post" class="card" autocomplete="off">
+  <div class="f" style="margin-bottom:14px"><div><label>تاریخ</label><input name="date" value="{{ F.date or v.date or today }}" required></div>
+    <div style="grid-column:span 3"><label>شرح سند</label><input name="descr" value="{{ F.descr or v.descr or '' }}"></div></div>
+  <div class="lines-wrap"><table class="lines"><thead><tr><th style="width:34px">#</th><th>حساب معین</th><th>تفصیلی شخص</th><th style="width:130px">بانک / صندوق</th><th style="width:120px">مرکز هزینه</th>
+    <th>شرح ردیف</th><th style="width:120px">بدهکار</th><th style="width:120px">بستانکار</th><th style="width:36px"></th></tr></thead><tbody id="rows"></tbody>
+    <tfoot><tr><td colspan="6">جمع <span id="diff" class="neg"></span></td><td class="n" id="td">0</td><td class="n" id="tc">0</td><td></td></tr></tfoot></table></div>
+  <div class="bar" style="margin-top:12px"><button type="button" class="btn s" onclick="addRow()">{{ icon('plus') }} ردیف</button><span class="sp"></span>
+    <a class="btn s" href="/vouchers">انصراف</a><button class="btn g">ذخیره سند</button></div>
+  <p class="note">اسناد فروش، خرید، انبار، دریافت/پرداخت و چک به‌طور خودکار ثبت می‌شوند؛ سند دستی برای هزینه‌ها، افتتاحیه، اصلاحی، استهلاک و... است.</p>
+</form>
+<template id="rt"><tr><td class="i"></td>
+  <td data-l="حساب"><select name="acc"><option value="">انتخاب...</option>{% for a in accounts %}<option value="{{ a.id }}">{{ a.code }} - {{ a.name }}</option>{% endfor %}</select></td>
+  <td data-l="شخص"><select name="person"><option value="">—</option>{% for p in persons %}<option value="{{ p.id }}">{{ p.code }} - {{ p.name }}</option>{% endfor %}</select></td>
+  <td data-l="بانک/صندوق"><select class="pl"><option value="">—</option>{% for b in banks %}<option value="bank:{{ b.id }}">بانک: {{ b.name }}</option>{% endfor %}{% for b in boxes %}<option value="box:{{ b.id }}">صندوق: {{ b.name }}</option>{% endfor %}</select>
+    <input type="hidden" name="bank"><input type="hidden" name="box"></td>
+  <td data-l="مرکز هزینه"><select name="cc"><option value="">—</option>{% for c in ccs %}<option value="{{ c.id }}">{{ c.name }}</option>{% endfor %}</select></td>
+  <td data-l="شرح"><input name="ldescr"></td><td data-l="بدهکار"><input name="dr" class="dr" type="number" min="0"></td><td data-l="بستانکار"><input name="cr" class="cr" type="number" min="0"></td>
+  <td><button type="button" class="btn sm r del" tabindex="-1">×</button></td></tr></template>
+{% endblock %}
+{% block js %}<script>
+const R=document.getElementById('rows'),T=document.getElementById('rt'),fm=n=>Number(n||0).toLocaleString('en-US');
+function calc(){let d=0,c=0;R.querySelectorAll('tr').forEach((r,i)=>{r.querySelector('.i').textContent=i+1;d+=+r.querySelector('.dr').value||0;c+=+r.querySelector('.cr').value||0});
+  document.getElementById('td').textContent=fm(d);document.getElementById('tc').textContent=fm(c);document.getElementById('diff').textContent=d!=c?' (اختلاف '+fm(Math.abs(d-c))+')':''}
+function addRow(l){const n=T.content.cloneNode(true),tr=n.querySelector('tr');l=l||{};
+  const set=(nm,v)=>{const e=tr.querySelector(`[name="${nm}"]`);if(e&&v)e.value=v};
+  set('acc',l.account_id);set('person',l.person_id);set('cc',l.cc_id);set('ldescr',l.descr);set('dr',l.debit);set('cr',l.credit);
+  const pl=tr.querySelector('.pl');pl.value=l.bank_id?'bank:'+l.bank_id:(l.box_id?'box:'+l.box_id:'');
+  const sp=()=>{const [k,i]=pl.value.split(':');tr.querySelector('[name=bank]').value=k=='bank'?i:'';tr.querySelector('[name=box]').value=k=='box'?i:''};pl.onchange=sp;sp();
+  tr.querySelectorAll('.dr,.cr').forEach(e=>e.oninput=calc);tr.querySelector('.del').onclick=()=>{tr.remove();calc()};R.appendChild(n);calc()}
+const L={{ lines|tojson }};if(L.length)L.forEach(addRow);else{addRow();addRow()}
+</script>{% endblock %}

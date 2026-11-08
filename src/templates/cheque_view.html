@@ -1,0 +1,32 @@
+{% extends "base.html" %}{% from "_m.html" import icon %}{% block h %}چک {{ 'دریافتی' if c.kind=='recv' else 'پرداختی' }} {{ c.serial or '#'~c.id }}{% endblock %}
+{% block body %}
+<div class="grid g4 kpis mb">
+  <div class="kpi"><span>مبلغ</span><b>{{ c.amount|m }}</b></div><div class="kpi"><span>سررسید</span><b>{{ c.due_date }}</b></div>
+  <div class="kpi" style="--c:{{ '#dc2626' if c.status=='bounced' else '#059669' }}"><span>وضعیت</span><b>{{ STATUS.get(c.status, c.status) }}</b></div>
+  <div class="kpi"><span>{{ 'دریافت از' if c.kind=='recv' else 'در وجه' }}</span><b>{{ c.pname or '—' }}</b></div>
+</div>
+<div class="grid g2">
+<div class="card"><h3>{{ icon('file-text') }} مشخصات</h3><table>
+  <tr><td>سریال</td><td>{{ c.serial or '' }}</td></tr><tr><td>شناسه صیادی</td><td dir="ltr" style="text-align:right">{{ c.sayad or '' }}</td></tr>
+  <tr><td>بانک</td><td>{{ c.bank_name or c.bname or '' }} {{ c.branch or '' }}</td></tr><tr><td>صاحب حساب</td><td>{{ c.owner or '' }}</td></tr>
+  <tr><td>تاریخ ثبت</td><td>{{ c.issue_date or '' }}</td></tr>{% if c.hname %}<tr><td>خرج شده به</td><td>{{ c.hname }}</td></tr>{% endif %}
+  {% if c.kind=='recv' and c.bname %}<tr><td>واگذار شده به بانک</td><td>{{ c.bname }}</td></tr>{% endif %}
+  {% if src %}<tr><td>سند ثبت</td><td><a href="/treasury/{{ src.id }}">سند خزانه {{ src.no }}</a></td></tr>{% endif %}</table></div>
+{% if can('treasury') and nxt %}<div class="card"><h3>{{ icon('send') }} تغییر وضعیت</h3>
+<form method="post" class="f" id="cf">
+  <div><label>عملیات</label><select name="to_status" id="ts">{% for s in nxt %}<option value="{{ s }}">{{ ACT[s] }}</option>{% endfor %}</select></div>
+  <div><label>تاریخ</label><input name="date" value="{{ today }}" required></div>
+  <div class="o-in_bank"><label>بانک</label><select name="bank">{% for b in banks %}<option value="{{ b.id }}">{{ b.name }}</option>{% endfor %}</select></div>
+  {% if c.status=='in_box' %}<div class="o-cleared"><label>واریز وجه به</label><select name="dest">{% for b in banks %}<option value="bank:{{ b.id }}">بانک: {{ b.name }}</option>{% endfor %}
+    {% for b in boxes %}<option value="box:{{ b.id }}">صندوق: {{ b.name }} (نقد شد)</option>{% endfor %}</select></div>{% endif %}
+  <div class="o-spent"><label>واگذاری به شخص</label><select name="person"><option value="">انتخاب...</option>{% for p in persons %}<option value="{{ p.id }}">{{ p.code }} - {{ p.name }}</option>{% endfor %}</select></div>
+  <div style="grid-column:1/-1"><label>توضیح</label><input name="note"></div>
+  <div><button class="btn g">ثبت</button></div></form>
+<p class="note">برای پرداخت به تامین‌کننده با این چک، بهتر است «سند پرداخت» با روش «خرج چک دریافتی» ثبت شود.</p></div>{% endif %}
+</div>
+<div class="card"><h3>{{ icon('clock') }} گردش چک</h3><table><tr><th>تاریخ</th><th>از وضعیت</th><th>به وضعیت</th><th>بانک / صندوق / شخص</th><th>سند</th><th>توضیح</th><th>کاربر</th></tr>
+{% for e in ev %}<tr><td>{{ e.date }}</td><td>{{ STATUS.get(e.from_status, '—') }}</td><td><b>{{ STATUS.get(e.to_status, e.to_status) }}</b></td>
+<td>{{ e.bname or e.xname or e.pname or '' }}</td><td>{% if e.dno %}<a href="/treasury/{{ e.tr_doc_id }}">خزانه {{ e.dno }}</a>{% endif %}</td><td>{{ e.note or '' }}</td><td>{{ uname(e.created_by) or '' }}</td></tr>{% endfor %}</table>
+{% if can('treasury') and ev|length > 1 and not ev[-1].tr_doc_id %}<form method="post" style="margin-top:10px" onsubmit="return confirm('آخرین عملیات برگشت داده شود؟')"><input type="hidden" name="action" value="undo"><button class="btn sm r">{{ icon('undo-2') }} برگشت آخرین عملیات</button></form>{% endif %}</div>
+{% endblock %}
+{% block js %}<script>const ts=document.getElementById('ts');if(ts){const f=()=>document.querySelectorAll('#cf [class^="o-"]').forEach(e=>e.style.display=e.className=='o-'+ts.value?'':'none');ts.onchange=f;f()}</script>{% endblock %}

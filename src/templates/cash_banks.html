@@ -1,0 +1,29 @@
+{% extends "base.html" %}{% from "_m.html" import icon %}{% block h %}صندوق‌ها و بانک‌ها{% endblock %}
+{% block body %}
+<div class="grid g4 kpis mb">
+  <div class="kpi"><span>موجودی صندوق‌ها</span><b>{{ bx|sum(attribute='bal')|m }}</b></div>
+  <div class="kpi"><span>موجودی بانک‌ها</span><b>{{ bk|sum(attribute='bal')|m }}</b></div>
+  <div class="kpi" style="--c:#0891b2"><span>چک دریافتی نزد صندوق ({{ cs['recv:in_box'].n if cs['recv:in_box'] else 0 }})</span><b>{{ (cs['recv:in_box'].s if cs['recv:in_box'] else 0)|m }}</b><small>در جریان وصول: {{ (cs['recv:in_bank'].s if cs['recv:in_bank'] else 0)|m }}</small></div>
+  <div class="kpi" style="--c:#dc2626"><span>چک‌های پرداختی پاس‌نشده ({{ cs['pay:issued'].n if cs['pay:issued'] else 0 }})</span><b>{{ (cs['pay:issued'].s if cs['pay:issued'] else 0)|m }}</b></div>
+</div>
+<div class="card"><h3>{{ icon('wallet') }} صندوق‌ها</h3>
+<table><tr><th>کد</th><th>نام</th><th>صندوقدار</th><th>پیش‌فرض</th><th>فعال</th><th class="n">موجودی</th><th></th></tr>
+{% for b in bx %}<tr><form method="post"><input type="hidden" name="t" value="box"><input type="hidden" name="id" value="{{ b.id }}">
+<td><input name="code" value="{{ b.code }}" style="width:80px"></td><td><input name="name" value="{{ b.name }}"></td><td><input name="keeper" value="{{ b.keeper or '' }}"></td>
+<td><input type="checkbox" name="is_default" value="1" {{ 'checked' if b.is_default }} style="width:auto"></td><td><input type="checkbox" name="active" value="1" {{ 'checked' if b.active }} style="width:auto"></td>
+<td class="n {{ 'neg' if b.bal < 0 }}"><a href="/reports/gl/tafsili?t=box&id={{ b.id }}">{{ b.bal|m }}</a></td><td>{% if can('treasury','setup') %}<button class="btn sm s">ذخیره</button>{% endif %}</td></form></tr>{% endfor %}
+{% if can('treasury','setup') %}<tr><form method="post"><input type="hidden" name="t" value="box"><td><input name="code" placeholder="کد" style="width:80px" required></td><td><input name="name" placeholder="نام صندوق جدید" required></td>
+<td><input name="keeper"></td><td><input type="checkbox" name="is_default" value="1" style="width:auto"></td><td></td><td></td><td><button class="btn sm g">افزودن</button></td></form></tr>{% endif %}</table></div>
+<div class="card"><h3>{{ icon('credit-card') }} حساب‌های بانکی و کارت‌خوان‌ها</h3>
+<div class="lines-wrap"><table><tr><th>کد</th><th>عنوان</th><th>بانک</th><th>شعبه</th><th>شماره حساب</th><th>شبا</th><th>کارت</th><th>پوز</th><th>پیش‌فرض</th><th>فعال</th><th class="n">موجودی</th><th></th></tr>
+{% for b in bk %}<tr><form method="post"><input type="hidden" name="t" value="bank"><input type="hidden" name="id" value="{{ b.id }}">
+<td><input name="code" value="{{ b.code }}" style="width:70px"></td><td><input name="name" value="{{ b.name }}"></td><td><input name="bank_name" value="{{ b.bank_name or '' }}"></td>
+<td><input name="branch" value="{{ b.branch or '' }}"></td><td><input name="account_no" value="{{ b.account_no or '' }}" dir="ltr"></td><td><input name="iban" value="{{ b.iban or '' }}" dir="ltr"></td>
+<td><input name="card_no" value="{{ b.card_no or '' }}" dir="ltr"></td><td><input type="checkbox" name="is_pos" value="1" {{ 'checked' if b.is_pos }} style="width:auto"></td>
+<td><input type="checkbox" name="is_default" value="1" {{ 'checked' if b.is_default }} style="width:auto"></td><td><input type="checkbox" name="active" value="1" {{ 'checked' if b.active }} style="width:auto"></td>
+<td class="n {{ 'neg' if b.bal < 0 }}"><a href="/reports/gl/tafsili?t=bank&id={{ b.id }}">{{ b.bal|m }}</a></td><td>{% if can('treasury','setup') %}<button class="btn sm s">ذخیره</button>{% endif %}</td></form></tr>{% endfor %}
+{% if can('treasury','setup') %}<tr><form method="post"><input type="hidden" name="t" value="bank"><td><input name="code" placeholder="کد" style="width:70px" required></td><td><input name="name" placeholder="عنوان حساب جدید" required></td>
+<td><input name="bank_name"></td><td><input name="branch"></td><td><input name="account_no" dir="ltr"></td><td><input name="iban" dir="ltr"></td><td><input name="card_no" dir="ltr"></td>
+<td><input type="checkbox" name="is_pos" value="1" style="width:auto"></td><td><input type="checkbox" name="is_default" value="1" style="width:auto"></td><td></td><td></td><td><button class="btn sm g">افزودن</button></td></form></tr>{% endif %}</table></div>
+<p class="note">موجودی‌ها از دفتر کل محاسبه می‌شود. برای جابه‌جایی وجه بین صندوق و بانک از «انتقال وجه» استفاده کنید.</p></div>
+{% endblock %}

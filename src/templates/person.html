@@ -1,7 +1,7 @@
 {% extends "base.html" %}{% from "_m.html" import icon %}{% block h %}{{ p.name }} ({{ p.code }}){% endblock %}
 {% block body %}
 <div class="grid g4 kpis mb">
-  {% if p.is_customer %}<div class="kpi" style="--c:{{ '#dc2626' if st.receivable>0 else '#059669' }}"><span>مانده دریافتنی (مشتری)</span><b>{{ st.receivable|m }}</b>{% if p.credit_limit %}<small>سقف اعتبار: {{ p.credit_limit|m }}</small>{% endif %}</div>{% endif %}
+  <div class="kpi" style="--c:{{ '#dc2626' if st.receivable>0 else '#059669' }}"><span>مانده حساب ({{ 'بدهکار' if st.receivable>0 else ('بستانکار' if st.receivable<0 else 'تسویه') }})</span><b>{{ st.receivable|abs|m }}</b>{% if p.credit_limit %}<small>سقف اعتبار: {{ p.credit_limit|m }}</small>{% endif %}</div>
   {% if p.is_visitor %}<div class="kpi" style="--c:#4f46e5"><span>جمع فروش ویزیتور</span><b>{{ st.visitor_sales|m }}</b></div>
   <div class="kpi" style="--c:#ca8a04"><span>کالای امانی باز</span><b>{{ st.open_amani|m }}</b></div>{% endif %}
   {% if p.is_supplier %}<div class="kpi" style="--c:#0891b2"><span>جمع خرید خالص از تامین‌کننده</span><b>{{ st.purchased|m }}</b></div>{% endif %}
@@ -10,9 +10,9 @@
   {% if (p.is_visitor or p.is_customer) and can('amani') %}<a class="btn g" href="/amani/new?party={{ p.id }}">{{ icon('send') }} صدور امانی</a>{% endif %}
   {% if p.is_customer and can('sale') %}<a class="btn g" href="/sales/new?party={{ p.id }}">{{ icon('receipt') }} فاکتور فروش</a>{% endif %}
   {% if p.is_supplier and can('purchase') %}<a class="btn g" href="/purchases/new?party={{ p.id }}">{{ icon('inbox') }} فاکتور خرید</a>{% endif %}
-  {% if can('rep_fin') %}{% if p.is_customer %}<a class="btn s" href="/reports/fin/statement?person={{ p.id }}&as=customer">{{ icon('book-open') }} صورت‌حساب مشتری</a>{% endif %}
-  {% if p.is_visitor %}<a class="btn s" href="/reports/fin/statement?person={{ p.id }}&as=visitor">{{ icon('book-open') }} صورت‌حساب ویزیتور (همه مشتریان)</a>{% endif %}
-  {% if p.is_supplier %}<a class="btn s" href="/reports/fin/statement?person={{ p.id }}&as=supplier">{{ icon('book-open') }} صورت‌حساب تامین‌کننده</a>{% endif %}{% endif %}
+  {% if can('treasury') %}<a class="btn" href="/treasury/new/recv?person={{ p.id }}">{{ icon('wallet') }} دریافت از شخص</a><a class="btn o" href="/treasury/new/pay?person={{ p.id }}">{{ icon('wallet') }} پرداخت به شخص</a>{% endif %}
+  {% if can('rep_fin') %}<a class="btn s" href="/reports/fin/statement?person={{ p.id }}">{{ icon('book-open') }} صورت‌حساب</a>
+  {% if p.is_visitor %}<a class="btn s" href="/reports/fin/statement?person={{ p.id }}&as=visitor">{{ icon('book-open') }} صورت‌حساب ویزیتور (همه مشتریان)</a>{% endif %}{% endif %}
 </div>
 {% if can('persons') %}<details class="card no-print"><summary style="cursor:pointer;font-weight:700">ویرایش اطلاعات</summary>
 <form method="post" style="margin-top:14px">{% include "_person_fields.html" %}<button class="btn">ذخیره</button></form></details>{% endif %}
@@ -20,7 +20,7 @@
 {% if invs %}<div class="card" style="grid-column:1/-1"><h3>{{ icon('file-check') }} آخرین فاکتورهای فروش</h3>
 <table><tr><th>فاکتور</th><th>تاریخ</th><th>مشتری</th><th>ویزیتور</th><th class="n">مبلغ</th><th class="n">مانده</th></tr>
 {% for c in invs %}<tr><td><a href="/invoices/{{ c.id }}">{{ c.no }}</a></td><td>{{ c.date }}</td><td>{{ c.cname }}</td><td>{{ c.vname or '' }}</td>
-<td class="n">{{ c.total|m }}</td><td class="n {{ 'neg' if c.total-c.pos-c.cash>0 }}">{{ (c.total-c.pos-c.cash)|m }}</td></tr>{% endfor %}</table></div>{% endif %}
+<td class="n">{{ c.total|m }}</td><td class="n {{ 'neg' if c.total-c.paid>0 }}">{{ (c.total-c.paid)|m }}</td></tr>{% endfor %}</table></div>{% endif %}
 {% if custs %}<div class="card"><h3>{{ icon('users') }} مشتریان این ویزیتور</h3><table><tr><th>کد</th><th>نام</th><th>موبایل</th><th class="n">مانده</th></tr>
 {% for u in custs %}<tr><td>{{ u.code }}</td><td><a href="/persons/{{ u.id }}">{{ u.name }}</a></td><td dir="ltr" style="text-align:right">{{ u.mobile or '' }}</td><td class="n">{{ u.receivable|m }}</td></tr>{% endfor %}</table></div>{% endif %}
 {% if cons %}<div class="card"><h3>{{ icon('hourglass') }} امانی‌ها</h3><table><tr><th>امانی</th><th>تاریخ</th><th>وضعیت</th><th class="n">ارزش</th></tr>
