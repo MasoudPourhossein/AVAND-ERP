@@ -8,7 +8,8 @@ read -rsp "GitHub token: " T; echo
 git clone https://x-access-token:$T@github.com/MasoudPourhossein/AVAND-ERP.git /opt/avand && bash /opt/avand/deploy/install.sh
 ```
 - اطلاعات برنامه قبلی (`/var/lib/anbar/anbar.db`) یک بار به PostgreSQL منتقل و کانتینر قبلی خاموش می‌شود؛ یک کپی از فایل قبلی در `/var/lib/avand/app/` می‌ماند.
-- برنامه روی `127.0.0.1:8000` است؛ nginx همان تنظیم قبلی (`https://domain:70`) را سرو می‌کند.
+- برنامه روی `127.0.0.1:8000` است؛ nginx روی میزبان آن را با `https://domain:70` سرو می‌کند.
+- SSL: `avand-ssl` (یا `bash /opt/avand/deploy/ssl.sh`) — گواهی Let's Encrypt، تمدید خودکار (certbot.timer + reload nginx)، TLS 1.2/1.3، HTTP/2، HSTS، انتقال http به https. پورت ۸۰ باید به این سرور فوروارد باشد.
 
 ## به‌روزرسانی
 ```bash

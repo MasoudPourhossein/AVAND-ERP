@@ -50,6 +50,7 @@ fi
 
 docker compose up -d
 install -m 755 "$APP/deploy/update.sh" /usr/local/bin/avand-update
+install -m 755 "$APP/deploy/ssl.sh" /usr/local/bin/avand-ssl
 cat > /etc/cron.d/avand-backup << CRON
 # daily 02:30 PostgreSQL backup, keep 30 days
 30 2 * * * root docker exec avand-db pg_dump -U avand -Fc -f /backups/auto-\$(date +\%Y\%m\%d).dump avand && find $H/backups -name 'auto-*.dump' -mtime +30 -delete
