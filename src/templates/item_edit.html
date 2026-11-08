@@ -25,7 +25,9 @@
 <div><label>نرخ مالیات (%) — خالی = پیش‌فرض شرکت</label><input name="vat_rate" value="{{ '' if it.vat_rate is none else it.vat_rate }}" inputmode="decimal"></div>
 <div style="grid-column:1/-1"><label>توضیح</label><input name="note" value="{{ it.note or '' }}"></div>
 <div><label style="display:flex;gap:8px;align-items:center;color:var(--txt)"><input type="checkbox" name="active" value="1" {{ 'checked' if it.active }} style="width:auto"> کالا فعال است</label></div>
-<div><button class="btn">ذخیره</button></div></form>
+<div><button class="btn">ذخیره</button></div>
+<div><button class="btn r" formaction="/delete/item/{{ it.id }}" formnovalidate onclick="return confirm('کالای «{{ it.name }}» حذف شود؟ موجودی اولیه آن هم حذف می‌شود؛ اگر در فاکتور یا سندی آمده باشد حذف نمی‌شود.')">حذف کالا</button></div>
+<input type="hidden" name="next" value="/items/{{ it.id }}"></form>
 <p class="note">موجودی به واحد فروش ذخیره می‌شود؛ تغییر تعداد در بسته فقط نمایش کارتنی را عوض می‌کند.</p></div>{% endif %}
 </div>
 <div class="card"><h3>موجودی به تفکیک انبار</h3><table><tr><th>انبار</th><th>موجودی</th></tr>

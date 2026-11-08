@@ -250,6 +250,27 @@ snap = lambda: one("SELECT string_agg(account_id||':'||COALESCE(person_id,0)||':
 s0 = snap(); P("/vouchers/repost", {}); assert snap() == s0; gl_ok()
 assert one(f"SELECT COUNT(*) FROM vouchers WHERE id={mv}") == 1
 print("V3 OK")
+# ================= deletion of base data
+assert "استفاده شده" in T(P(f"/delete/person/{c1}", {})) and one(f"SELECT COUNT(*) FROM persons WHERE id={c1}") == 1
+assert "استفاده شده" in T(P(f"/delete/item/{k1}", {}))
+assert "استفاده شده" in T(P(f"/delete/bank/{bank2}", {})) and "استفاده شده" in T(P(f"/delete/cc/{cc1}", {}))
+assert "سیستمی" in T(P(f"/delete/account/{rent - rent + one(chr(83)+'ELECT id FROM accounts WHERE sys_key=' + chr(39) + 'cash' + chr(39))}", {}))
+P("/persons", {"name": "شخص فیک", "is_customer": "1", "active": "1"}); fk = one("SELECT id FROM persons WHERE name='شخص فیک'")
+assert "حذف شد" in T(P(f"/delete/person/{fk}", {})) and one(f"SELECT COUNT(*) FROM persons WHERE id={fk}") == 0
+P("/items", {"code": "FK1", "name": "کالای فیک", "unit": "عدد", "pack": 1, "buy": 10, "price": 20, "init_box": 7, "wh_id": w1, "date": "1405/08/20"})
+fi = one("SELECT id FROM items WHERE code='FK1'"); assert one(f"SELECT SUM(qty) FROM stock_moves WHERE item_id={fi}") == 7
+assert "حذف شد" in T(P(f"/delete/item/{fi}", {})) and one(f"SELECT COUNT(*) FROM stock_moves WHERE item_id={fi}") == 0
+assert one("SELECT COUNT(*) FROM receipts r WHERE NOT EXISTS (SELECT 1 FROM receipt_lines l WHERE l.receipt_id=r.id)") == 0
+gl_ok(); assert one("SELECT COUNT(*) FROM vouchers v WHERE src_type='RES' AND NOT EXISTS (SELECT 1 FROM receipts r WHERE r.id=v.src_id)") == 0
+P("/groups", {"code": "GX", "name": "گروه فیک"}); gx = one("SELECT id FROM item_groups WHERE code='GX'")
+assert "حذف شد" in T(P(f"/delete/group/{gx}", {}))
+P("/cash-banks", {"t": "box", "code": "C09", "name": "صندوق فیک"}); bx9 = one("SELECT id FROM cash_boxes WHERE code='C09'")
+assert "حذف شد" in T(P(f"/delete/box/{bx9}", {}))
+P("/warehouses", {"code": "W09", "name": "انبار فیک"}); w9 = one("SELECT id FROM warehouses WHERE code='W09'")
+assert "حذف شد" in T(P(f"/delete/warehouse/{w9}", {}))
+P("/accounts", {"parent_id": one("SELECT id FROM accounts WHERE code='82'"), "code": "8299", "name": "هزینه فیک"})
+assert "حذف شد" in T(P(f"/delete/account/{one(chr(83)+'ELECT id FROM accounts WHERE code=' + chr(39) + '8299' + chr(39))}", {}))
+G("/system/reset")
 # permissions
 P("/users", {"username": "anbar", "password": "pass123", "role": "stock", "perm": ["receipt", "transfer", "purchase", "rep_stock"]})
 ac = A.app.test_client(); P("/login", {"username": "anbar", "password": "pass123"}, ac)
@@ -267,4 +288,16 @@ P(f"/invoices/{iid}/remove", {"step": "2", "action": "delete", "confirm": no_d, 
 assert one(f"SELECT SUM(qty) FROM stock_moves WHERE item_id={k1} AND wh_id={w2}") == 100
 gl_ok()
 assert one(f"SELECT COUNT(*) FROM vouchers WHERE src_type='FCT' AND src_id={iid}") == 0
+# admin reset of test data
+assert "رمز عبور" in T(P("/system/reset", {"mode": "docs", "confirm": "حذف همه", "ok": "1", "password": "bad"}))
+assert ac.post("/system/reset", data={"mode": "all"}).status_code in (302, 403)
+P("/system/reset", {"mode": "docs", "confirm": "حذف همه", "ok": "1", "password": "secret1"})
+assert one("SELECT COUNT(*) FROM sales_invoices") == 0 and one("SELECT COUNT(*) FROM vouchers") == 0 and one("SELECT COUNT(*) FROM stock_moves") == 0
+assert one("SELECT COUNT(*) FROM persons") > 0 and one("SELECT COUNT(*) FROM items") > 0
+assert "حذف شد" in T(P(f"/delete/person/{c1}", {}))
+P("/system/reset", {"mode": "all", "confirm": "حذف همه", "ok": "1", "password": "secret1"})
+assert one("SELECT COUNT(*) FROM persons") == 0 and one("SELECT COUNT(*) FROM items") == 0 and one("SELECT COUNT(*) FROM users") >= 1
+P("/persons", {"name": "مشتری جدید", "is_customer": "1", "active": "1"})
+P("/items", {"code": "N1", "name": "کالای جدید", "unit": "عدد", "pack": 1, "buy": 10, "price": 20, "init_box": 5, "wh_id": w1, "date": "1405/09/01"})
+assert one("SELECT no FROM receipts") > 0; gl_ok(); G("/"); G("/reports/gl/trial")
 print("SMOKE OK")

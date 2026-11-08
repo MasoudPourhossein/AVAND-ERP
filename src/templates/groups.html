@@ -9,6 +9,6 @@
 <td><input name="code" value="{{ g_.code }}" style="width:90px"></td><td><input name="name" value="{{ g_.name }}"></td>
 <td><select name="parent_id"><option value="">—</option>{% for p in rows if p.id != g_.id %}<option value="{{ p.id }}" {{ 'selected' if p.id==g_.parent_id }}>{{ p.name }}</option>{% endfor %}</select></td>
 <td class="n"><a href="/items?group={{ g_.id }}">{{ g_.n }}</a></td><td><input type="checkbox" name="active" value="1" {{ 'checked' if g_.active }} style="width:auto"></td>
-<td><button class="btn sm">ذخیره</button></td></form></tr>
+<td style="white-space:nowrap"><button class="btn sm">ذخیره</button> <button class="btn sm r" formaction="/delete/group/{{ g_.id }}" formnovalidate onclick="return confirm('«{{ g_.name }}» حذف شود؟ (فقط اگر در هیچ سندی استفاده نشده باشد)')">حذف</button></td></form></tr>
 {% else %}<tr><td colspan="6" class="muted">گروهی تعریف نشده است.</td></tr>{% endfor %}</table></div>
 {% endblock %}

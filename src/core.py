@@ -123,6 +123,7 @@ ACCESS = {
     "api_person_balance": (["treasury", "payment", "rep_fin", "persons"], []),
     "vouchers": (["accounting", "rep_fin"], []), "voucher_view": (["accounting", "rep_fin"], []), "voucher_new": (["accounting"], ["accounting"]),
     "voucher_edit": (["accounting"], ["accounting"]), "voucher_delete": (["void"], ["void"]), "repost": (["users"], ["users"]),
+    "master_delete": ([], ["persons", "items", "setup", "treasury", "users"]), "data_reset": (["users"], ["users"]),
 }
 
 

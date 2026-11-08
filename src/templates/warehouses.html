@@ -13,6 +13,6 @@
 <td><input type="checkbox" name="is_default" value="1" {{ 'checked' if w.is_default }} style="width:auto"></td>
 <td><input type="checkbox" name="active" value="1" {{ 'checked' if w.active }} style="width:auto"></td>
 <td class="n">{{ w.n_items }}</td><td class="n"><a href="/reports/stock?wh={{ w.id }}">{{ w.st|m }}</a></td>
-<td>{% if can('setup') %}<button class="btn sm">ذخیره</button>{% endif %}</td></form></tr>{% endfor %}</table>
+<td style="white-space:nowrap">{% if can('setup') %}<button class="btn sm">ذخیره</button> <button class="btn sm r" formaction="/delete/warehouse/{{ w.id }}" formnovalidate onclick="return confirm('«{{ w.name }}» حذف شود؟ (فقط اگر در هیچ سندی استفاده نشده باشد)')">حذف</button>{% endif %}</td></form></tr>{% endfor %}</table>
 <p class="note">انبار پیش‌فرض در فرم‌های امانی و فروش از قبل انتخاب می‌شود؛ صدور از انبار دیگر هم در همان فرم ممکن است.</p></div>
 {% endblock %}

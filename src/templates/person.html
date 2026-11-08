@@ -15,7 +15,9 @@
   {% if p.is_visitor %}<a class="btn s" href="/reports/fin/statement?person={{ p.id }}&as=visitor">{{ icon('book-open') }} صورت‌حساب ویزیتور (همه مشتریان)</a>{% endif %}{% endif %}
 </div>
 {% if can('persons') %}<details class="card no-print"><summary style="cursor:pointer;font-weight:700">ویرایش اطلاعات</summary>
-<form method="post" style="margin-top:14px">{% include "_person_fields.html" %}<button class="btn">ذخیره</button></form></details>{% endif %}
+<form method="post" style="margin-top:14px">{% include "_person_fields.html" %}<div class="bar"><button class="btn">ذخیره</button><span class="sp"></span>
+<button class="btn r" formaction="/delete/person/{{ p.id }}" formnovalidate onclick="return confirm('شخص «{{ p.name }}» حذف شود؟ فقط اگر هیچ سندی نداشته باشد.')">حذف شخص</button></div>
+<input type="hidden" name="next" value="/persons/{{ p.id }}"></form></details>{% endif %}
 <div class="grid g2">
 {% if invs %}<div class="card" style="grid-column:1/-1"><h3>{{ icon('file-check') }} آخرین فاکتورهای فروش</h3>
 <table><tr><th>فاکتور</th><th>تاریخ</th><th>مشتری</th><th>ویزیتور</th><th class="n">مبلغ</th><th class="n">مانده</th></tr>
