@@ -1,0 +1,39 @@
+# AVAND ERP
+
+سیستم یکپارچه فروش، انبار و مالی — Flask + PostgreSQL، رابط کاملا فارسی و ریسپانسیو.
+
+## نصب اولیه (Ubuntu 24.04، یک بار)
+```bash
+read -rsp "GitHub token: " T; echo
+git clone https://x-access-token:$T@github.com/MasoudPourhossein/AVAND-ERP.git /opt/avand && bash /opt/avand/deploy/install.sh
+```
+- اطلاعات برنامه قبلی (`/var/lib/anbar/anbar.db`) یک بار به PostgreSQL منتقل و کانتینر قبلی خاموش می‌شود؛ یک کپی از فایل قبلی در `/var/lib/avand/app/` می‌ماند.
+- برنامه روی `127.0.0.1:8000` است؛ nginx همان تنظیم قبلی (`https://domain:70`) را سرو می‌کند.
+
+## به‌روزرسانی
+```bash
+avand-update
+```
+
+## مسیرها
+| | |
+|---|---|
+| کد | `/opt/avand` (تنظیمات در `/opt/avand/.env`) |
+| دیتابیس | `/var/lib/avand/pg` |
+| لوگو، کلید، پشتیبان دستی | `/var/lib/avand/app` |
+| پشتیبان خودکار روزانه (۳۰ روز) | `/var/lib/avand/backups` |
+| لاگ | `docker logs -f avand-app` |
+
+بازگردانی پشتیبان: `docker exec -i avand-db pg_restore -U avand -d avand -c < file.dump`
+
+## فازها
+- **فاز ۱ (این نسخه):** PostgreSQL، اشخاص (مشتری/ویزیتور/تامین‌کننده/کارمند)، چند انبار + انبار پیش‌فرض، گروه کالا، ورود و ویرایش گروهی کالا با اکسل، تغییر گروهی نرخ، خرید و برگشت از خرید، رسید، حواله بین انبار، امانی از هر انبار، تسویه و صدور فاکتور جدا برای هر مشتری ویزیتور، فاکتور فروش مستقیم، صورت‌حساب مشتری/ویزیتور/تامین‌کننده، تراز اشخاص، کدینگ حساب (گروه/کل/معین) و مراکز هزینه.
+- **فاز ۲:** خزانه — بانک، صندوق، چک دریافتی/پرداختی با همه وضعیت‌ها، دریافت و پرداخت به همه اشخاص، اسناد حسابداری خودکار.
+- **فاز ۳:** دفاتر کل/معین/تفصیلی، تراز آزمایشی، صورت‌های مالی، ادغام هسته مالی/حقوق Nexus.
+
+## توسعه
+```bash
+pip install -r requirements.txt
+DATABASE_URL=postgresql+psycopg://avand:avand@127.0.0.1/avand AVAND_DATA=./data python3 src/app.py
+DATABASE_URL=... AVAND_DATA=/tmp/t python3 -I tests/smoke.py   # پاک کردن و تست کامل دیتابیس تست
+```

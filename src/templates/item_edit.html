@@ -1,0 +1,36 @@
+{% extends "base.html" %}{% from "_m.html" import icon %}{% block h %}کالا: {{ it.code }} - {{ it.name }}{% endblock %}
+{% block body %}
+<div class="grid g4 kpis mb">
+  <div class="kpi" style="--c:#0891b2"><span>نرخ خرید هر {{ it.unit }}</span><b>{{ buy|m }}</b>{% if it.pack>1 %}<small>هر {{ it.pack_unit }}: {{ (buy*it.pack)|m }}</small>{% endif %}</div>
+  <div class="kpi" style="--c:#4f46e5"><span>نرخ فروش هر {{ it.unit }}</span><b>{{ price|m }}</b>{% if it.pack>1 %}<small>هر {{ it.pack_unit }}: {{ (price*it.pack)|m }}</small>{% endif %}</div>
+  <div class="kpi" style="--c:#059669"><span>سود هر واحد</span><b>{% if buy and price %}{{ (price-buy)|m }} <small>({{ ((price-buy)*100/price)|round(1) }}%)</small>{% else %}—{% endif %}</b></div>
+  <div class="kpi" style="--c:#ca8a04"><span>موجودی کل انبارها</span><b style="font-size:15px">{{ pkr(stock, it) }}</b><small>امانی: {{ pkr(row.open_amani, it) }}</small></div>
+</div>
+<div class="grid g2">
+{% if can('items') %}<div class="card"><h3>{{ icon('tags') }} تغییر نرخ خرید و فروش</h3>
+<form method="post" action="/prices" class="f"><input type="hidden" name="item_id" value="{{ it.id }}"><input type="hidden" name="back" value="/items/{{ it.id }}">
+<div><label>تاریخ اعمال</label><input name="date" value="{{ today }}"></div>
+<div><label>نرخ خرید هر {{ it.unit }} (ریال)</label><input name="buy" type="number" min="0" value="{{ buy|int }}"></div>
+<div><label>نرخ فروش هر {{ it.unit }} (ریال)</label><input name="price" type="number" min="0" value="{{ price }}"></div>
+<div><button class="btn g">ثبت نرخ</button></div></form>
+<p class="note">سود هر فاکتور = (نرخ فروش − نرخ خرید در تاریخ فاکتور قطعی) × تعداد فروش.</p></div>
+<div class="card"><h3>ویرایش مشخصات</h3>
+<form method="post" class="f"><div><label>کد کالا</label><input name="code" value="{{ it.code }}"></div>
+<div style="grid-column:span 2"><label>نام کالا</label><input name="name" value="{{ it.name }}"></div>
+<div><label>گروه</label><select name="group_id"><option value="">—</option>{% for g_ in groups %}<option value="{{ g_.id }}" {{ 'selected' if g_.id==it.group_id }}>{{ g_.code }} - {{ g_.name }}</option>{% endfor %}</select></div>
+<div><label>بارکد</label><input name="barcode" value="{{ it.barcode or '' }}"></div>
+<div><label>واحد فروش</label><input name="unit" value="{{ it.unit }}"></div>
+<div><label>واحد بسته‌بندی</label><input name="pack_unit" value="{{ it.pack_unit }}"></div>
+<div><label>تعداد واحد در هر بسته</label><input name="pack" type="number" min="1" value="{{ it.pack }}"></div>
+<div style="grid-column:1/-1"><label>توضیح</label><input name="note" value="{{ it.note or '' }}"></div>
+<div><label style="display:flex;gap:8px;align-items:center;color:var(--txt)"><input type="checkbox" name="active" value="1" {{ 'checked' if it.active }} style="width:auto"> کالا فعال است</label></div>
+<div><button class="btn">ذخیره</button></div></form>
+<p class="note">موجودی به واحد فروش ذخیره می‌شود؛ تغییر تعداد در بسته فقط نمایش کارتنی را عوض می‌کند.</p></div>{% endif %}
+</div>
+<div class="card"><h3>موجودی به تفکیک انبار</h3><table><tr><th>انبار</th><th>موجودی</th></tr>
+{% for w in by_wh %}<tr><td>{{ w.name }}</td><td>{{ pkr(w.st, it) }}</td></tr>{% endfor %}</table></div>
+<div class="card"><h3>سابقه نرخ</h3><table><tr><th>تاریخ اعمال</th><th class="n">نرخ خرید</th><th class="n">نرخ فروش</th><th class="n">سود واحد</th><th></th></tr>
+{% for h in hist %}<tr><td>{{ h.date }}</td><td class="n">{{ h.buy|m }}</td><td class="n">{{ h.price|m }}</td><td class="n">{{ (h.price-h.buy)|m if h.buy and h.price else '—' }}</td>
+<td>{% if can('items') %}<form method="post" action="/prices/{{ h.id }}/delete" onsubmit="return confirm('حذف شود؟')" class="keep-del"><input type="hidden" name="back" value="/items/{{ it.id }}"><button class="btn sm r">حذف</button></form>{% endif %}</td></tr>
+{% else %}<tr><td colspan="5" class="muted">نرخی ثبت نشده است.</td></tr>{% endfor %}</table></div>
+{% endblock %}

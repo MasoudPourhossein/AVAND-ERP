@@ -1,0 +1,4 @@
+<div class="bar"><span class="muted">قالب آماده:</span>
+{% for k,(lab,ps) in PRESETS.items() %}<button type="button" class="btn sm s" onclick='preset(this.form,{{ ps|tojson }},"{{k}}")' >{{ lab }}</button>{% endfor %}</div>
+<input type="hidden" name="role" value="{{ role or 'viewer' }}">
+<div class="perms">{% for k,lab in PERMS.items() %}<label><input type="checkbox" name="perm" value="{{k}}" {{ 'checked' if k in sel }}> {{ lab }}</label>{% endfor %}</div>

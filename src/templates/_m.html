@@ -1,0 +1,14 @@
+{% macro icon(n, cls='ic') %}<svg class="{{ cls }}"><use href="#i-{{ n }}"/></svg>{% endmacro %}
+{% macro period(f,t) %}
+<form class="bar no-print" method="get">
+  <label style="margin:0">از</label><input name="from" value="{{ f }}" size="10">
+  <label style="margin:0">تا</label><input name="to" value="{{ t }}" size="10">
+  {% if caller %}{{ caller() }}{% endif %}
+  <button class="btn">نمایش</button>
+</form>
+{% endmacro %}
+{% macro vsel(visitors, vid, name='visitor', all=True) %}
+<select name="{{name}}">{% if all %}<option value="">همه ویزیتورها</option>{% endif %}
+{% for v in visitors %}<option value="{{v.id}}" {{ 'selected' if v.id==vid }}>{{v.code}} - {{v.name}}</option>{% endfor %}</select>
+{% endmacro %}
+{% macro delta(p) %}{% if p is none %}<span class="delta flat">—</span>{% elif p >= 0 %}<span class="delta up">▲ {{ '%.1f'|format(p) }}%</span>{% else %}<span class="delta down">▼ {{ '%.1f'|format(-p) }}%</span>{% endif %}{% endmacro %}

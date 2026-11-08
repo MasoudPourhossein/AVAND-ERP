@@ -1,0 +1,33 @@
+{% extends "base.html" %}{% block h %}ابطال / حذف فاکتور فروش {{ c.no }}{% endblock %}
+{% block body %}
+<div class="card" style="border-color:#fecaca">
+  <h3 style="color:var(--bad)">هشدار {{ step }} از ۲</h3>
+  <div class="grid g4 kpis mb">
+    <div class="kpi"><span>فاکتور{{ ' / امانی' if c.cons_id }}</span><b>{{ c.no }}{{ ' / ' ~ c.cons_no if c.cons_id }}</b></div>
+    <div class="kpi"><span>مشتری</span><b>{{ c.cname }}</b></div>
+    <div class="kpi"><span>جمع فاکتورهای درگیر ({{ group|length }})</span><b>{{ group|sum(attribute='total')|m }}</b></div>
+    <div class="kpi" style="--c:#dc2626"><span>دریافتی ثبت‌شده ({{ pays|length }} سند)</span><b>{{ pays|sum(attribute='amount')|m }}</b></div>
+  </div>
+  {% if group|length > 1 %}<p class="muted">این فاکتور از تسویه امانی {{ c.cons_no }} است؛ همه فاکتورهای آن با هم باطل می‌شوند: {% for g in group %}{{ g.no }} ({{ g.cname }}){{ '، ' if not loop.last }}{% endfor %}</p>{% endif %}
+  <form method="post">
+    {% if step == 1 %}
+      <input type="hidden" name="step" value="1">
+      {% if 'unsettle' in actions %}<label style="display:flex;gap:10px;align-items:flex-start;color:var(--txt);font-size:14px;padding:12px;border:1px solid var(--line);border-radius:10px;margin-bottom:10px">
+        <input type="radio" name="action" value="unsettle" {{ 'checked' if action=='unsettle' }} style="width:auto;margin-top:6px">
+        <span><b>ابطال تسویه</b><br><span class="muted">فاکتورها حذف و سند به «امانی باز» برمی‌گردد؛ مرجوعی صفر و کالا دوباره نزد ویزیتور حساب می‌شود.</span></span></label>{% endif %}
+      <label style="display:flex;gap:10px;align-items:flex-start;color:var(--txt);font-size:14px;padding:12px;border:1px solid var(--line);border-radius:10px;margin-bottom:14px">
+        <input type="radio" name="action" value="delete" {{ 'checked' if action=='delete' }} style="width:auto;margin-top:6px">
+        <span><b>حذف کامل</b><br><span class="muted">{{ 'فاکتورها و فاکتور امانی حذف می‌شوند و' if c.cons_id else 'فاکتور حذف می‌شود و' }} کالا به موجودی انبار برمی‌گردد.</span></span></label>
+      <div class="flash bad">همه اسناد دریافت ({{ pays|length }} سند، جمع {{ pays|sum(attribute='amount')|m }} ریال) حذف می‌شوند و مانده حساب‌ها و گزارش‌های مالی تغییر می‌کنند.</div>
+      <label style="display:flex;gap:8px;align-items:center;color:var(--txt);font-size:14px;margin-bottom:14px"><input type="checkbox" name="ok1" value="1" style="width:auto"> هشدار بالا را خواندم و ادامه می‌دهم.</label>
+      <div class="bar"><a class="btn s" href="/invoices/{{ c.id }}">انصراف</a><span class="sp"></span><button class="btn o">ادامه به هشدار دوم</button></div>
+    {% else %}
+      <input type="hidden" name="step" value="2"><input type="hidden" name="action" value="{{ action }}">
+      <div class="flash bad"><b>هشدار نهایی:</b> {{ 'حذف کامل' if action=='delete' else 'ابطال تسویه' }}. این کار قابل برگشت نیست.</div>
+      <div class="f mb"><div><label>برای تایید، شماره فاکتور ({{ c.no }}) را تایپ کنید</label><input name="confirm" autocomplete="off" inputmode="numeric" required></div></div>
+      <label style="display:flex;gap:8px;align-items:center;color:var(--txt);font-size:14px;margin-bottom:14px"><input type="checkbox" name="ok2" value="1" style="width:auto"> مسئولیت این کار را می‌پذیرم.</label>
+      <div class="bar"><a class="btn s" href="/invoices/{{ c.id }}">انصراف</a><span class="sp"></span><button class="btn r">{{ 'حذف کامل' if action=='delete' else 'ابطال تسویه' }}</button></div>
+    {% endif %}
+  </form>
+</div>
+{% endblock %}

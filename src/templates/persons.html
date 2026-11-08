@@ -1,0 +1,20 @@
+{% extends "base.html" %}{% from "_m.html" import icon %}{% block h %}اشخاص و طرف حساب‌ها{% endblock %}
+{% block body %}
+<div class="bar no-print">
+  <a class="btn {{ '' if not kind else 's' }}" href="/persons">همه</a>
+  {% for k, lab in PERSON_KINDS.items() %}<a class="btn {{ '' if kind==k else 's' }}" href="/persons?kind={{ k }}">{{ lab }} ({{ counts[k] }})</a>{% endfor %}
+</div>
+{% if can('persons') %}<details class="card no-print" {{ 'open' if not rows }}><summary style="cursor:pointer;font-weight:700">{{ icon('plus') }} تعریف شخص جدید</summary>
+<form method="post" style="margin-top:14px">{% with p=None %}{% include "_person_fields.html" %}{% endwith %}<button class="btn g">ثبت</button></form></details>{% endif %}
+<div class="card">
+<form class="bar no-print" method="get"><input type="hidden" name="kind" value="{{ kind }}"><input name="q" value="{{ request.args.q or '' }}" placeholder="کد، نام یا موبایل">
+{% if kind=='customer' %}<select name="visitor"><option value="">همه ویزیتورها</option>{% for v in visitors %}<option value="{{ v.id }}" {{ 'selected' if v.id==vf }}>مشتریان {{ v.name }}</option>{% endfor %}</select>{% endif %}
+<button class="btn">جستجو</button></form>
+<table><tr><th>کد</th><th>نام</th><th>نوع</th><th>موبایل</th><th>ویزیتور مسئول</th><th class="n">مانده دریافتنی</th><th class="n">خرید از او</th><th></th></tr>
+{% for r in rows %}<tr {% if not r.active %}style="opacity:.55"{% endif %}><td>{{ r.code }}</td><td><a href="/persons/{{ r.id }}">{{ r.name }}</a></td>
+<td>{% for k, lab in PERSON_KINDS.items() if r['is_' ~ k] %}<span class="tag open" style="margin:1px">{{ lab }}</span>{% endfor %}</td>
+<td dir="ltr" style="text-align:right">{{ r.mobile or r.phone or '' }}</td><td>{{ r.vname or '' }}</td>
+<td class="n {{ 'neg' if r.receivable > 0 }}">{{ r.receivable|m if r.receivable else '' }}</td><td class="n">{{ r.purchased|m if r.purchased else '' }}</td>
+<td><a class="btn sm s" href="/persons/{{ r.id }}">پرونده</a></td></tr>
+{% else %}<tr><td colspan="8" class="muted">موردی نیست.</td></tr>{% endfor %}</table></div>
+{% endblock %}

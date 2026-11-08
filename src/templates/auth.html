@@ -1,0 +1,16 @@
+<!doctype html>
+<html lang="fa" dir="rtl"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>{{ 'راه‌اندازی اولیه' if mode=='setup' else 'ورود' }} - {{ COMPANY }}</title>
+<link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}"></head>
+<body class="auth"><form method="post" class="auth-box">
+  <div style="text-align:center;margin-bottom:10px">{% if HAS_LOGO %}<img src="{{ url_for('logo', v=LOGO_V) }}" style="max-height:160px;max-width:300px"><br>{% endif %}</div>
+  <h2 style="text-align:center">{{ COMPANY }}</h2>
+  <p class="muted" style="text-align:center">{{ 'ساخت کاربر مدیر (فقط یک بار)' if mode=='setup' else 'ورود به سیستم' }}</p>
+  {% with msgs = get_flashed_messages(with_categories=true) %}{% for c,m in msgs %}<div class="flash {{c}}">{{ m }}</div>{% endfor %}{% endwith %}
+  {% if mode=='setup' %}<label>نام و نام خانوادگی</label><input name="fullname">{% endif %}
+  <label>نام کاربری</label><input name="username" required autofocus autocomplete="username" dir="ltr">
+  <label>رمز عبور</label><input name="password" type="password" required autocomplete="{{ 'new-password' if mode=='setup' else 'current-password' }}" dir="ltr">
+  {% if mode=='setup' %}<label>تکرار رمز عبور</label><input name="password2" type="password" required dir="ltr">{% endif %}
+  <button class="btn g">{{ 'ساخت مدیر' if mode=='setup' else 'ورود' }}</button>
+  <p class="pw" style="text-align:center;margin:14px 0 0">{{ POWERED }}</p>
+</form></body></html>

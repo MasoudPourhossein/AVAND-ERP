@@ -1,0 +1,27 @@
+{% extends "base.html" %}{% from "_m.html" import icon %}{% block h %}{{ doc.title }} شماره {{ doc.no }}{% endblock %}
+{% block body %}
+<div class="bar no-print">
+  <button class="btn" onclick="print()">{{ icon('printer') }} چاپ</button>
+  {% if pdf_url %}<a class="btn s" href="{{ pdf_url }}">{{ icon('file-text') }} PDF</a>{% endif %}
+  {% if back %}<a class="btn s" href="{{ back }}">بازگشت</a>{% else %}<button class="btn s" onclick="history.back()">بازگشت</button>{% endif %}
+  {% if c and c.status=='open' and can('settle') %}<a class="btn o" href="/amani/{{ c.id }}/settle">{{ icon('undo-2') }} تسویه و صدور فاکتور قطعی</a>{% endif %}
+  {% if c and c.status=='settled' %}{% for i in invs or [] %}<a class="btn g" href="/invoices/{{ i.id }}">فاکتور {{ i.no }} — {{ i.cname }}</a>{% endfor %}
+  {% if c.return_no %}<a class="btn s" href="/print/return/{{ c.id }}">برگه مرجوعی {{ c.return_no }}</a>{% endif %}{% endif %}
+  <span class="sp"></span>
+  {% if del_url %}<form method="post" action="{{ del_url }}" onsubmit="return confirm('سند حذف شود؟')"><button class="btn r">حذف سند</button></form>{% endif %}
+</div>
+<div class="doc">
+  <div class="doc-h">{% include "_brand.html" %}<div style="flex:1"><h2>{{ doc.title }}</h2><div class="co">{{ COMPANY }}</div></div><div>شماره: <b>{{ doc.no }}</b><br>تاریخ: <b>{{ doc.date }}</b></div></div>
+  <div class="doc-meta">
+    {% if doc.party %}<div>{{ doc.party_label or 'ویزیتور' }}: <b>{{ doc.party }}</b></div>{% endif %}
+    {% if doc.status %}<div>وضعیت: <b>{{ doc.status }}</b></div>{% endif %}
+    {% if doc.extra %}<div>{{ doc.extra }}</div>{% endif %}
+    {% if doc.note %}<div>توضیح: {{ doc.note }}</div>{% endif %}
+    {% if doc.user %}<div>ثبت‌کننده: {{ doc.user }}</div>{% endif %}
+  </div>
+  <div class="tw"><table><tr><th>ردیف</th>{% for c_ in doc.cols %}<th>{{ c_ }}</th>{% endfor %}</tr>
+  {% for r in doc.rows %}<tr><td>{{ loop.index }}</td>{% for v in r %}<td {% if loop.index>2 and (v|string|replace(',','')|replace('-','')).isdigit() %}class="n"{% endif %}>{{ v }}</td>{% endfor %}</tr>{% endfor %}</table></div>
+  <div class="doc-foot"><table style="width:auto;margin:12px auto 0 0">{% for k,v in doc.foot %}<tr><td><b>{{ k }}</b></td><td class="n" style="min-width:150px"><b>{{ v }}</b></td></tr>{% endfor %}</table></div>
+  <div class="sign">{% for s in doc.sign %}<div>امضای {{ s }}</div>{% endfor %}</div>
+</div>
+{% endblock %}

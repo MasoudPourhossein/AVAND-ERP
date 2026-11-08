@@ -1,0 +1,16 @@
+{% extends "base.html" %}{% from "_m.html" import icon %}{% block h %}ویرایش کاربر: {{ u.username }}{% endblock %}
+{% block body %}
+<form method="post" class="card">
+  <div class="f mb">
+    <div><label>نام کاربری</label><input value="{{ u.username }}" disabled dir="ltr"></div>
+    <div><label>نام و نام خانوادگی</label><input name="fullname" value="{{ u.fullname or '' }}"></div>
+    <div><label>رمز جدید (خالی = بدون تغییر)</label><input name="password" type="password" dir="ltr" autocomplete="new-password"></div>
+    <div><label>&nbsp;</label><label style="display:flex;gap:8px;align-items:center;color:var(--txt);font-size:14px"><input type="checkbox" name="active" value="1" {{ 'checked' if u.active }} style="width:auto"> کاربر فعال است</label></div>
+  </div>
+  {% with sel=up, role=u.role %}{% include "_perms.html" %}{% endwith %}
+  <div class="bar" style="margin-top:14px"><a class="btn s" href="/users">انصراف</a><span class="sp"></span><button class="btn g">ذخیره</button></div>
+</form>
+{% if u.id != user.id %}<form method="post" action="/users/{{ u.id }}/delete" class="keep-del card" onsubmit="return confirm('کاربر «{{ u.username }}» حذف شود؟')">
+  <div class="bar" style="margin:0"><span class="muted">حذف کاربر: دیگر نمی‌تواند وارد شود؛ نامش روی اسنادی که ثبت کرده باقی می‌ماند.</span><span class="sp"></span><button class="btn r">حذف کاربر</button></div></form>{% endif %}
+{% endblock %}
+{% block js %}<script>function preset(f,ps,k){f.querySelectorAll('input[name=perm]').forEach(c=>c.checked=ps.includes(c.value));f.role.value=k}</script>{% endblock %}

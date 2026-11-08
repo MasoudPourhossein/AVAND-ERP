@@ -1,0 +1,10 @@
+{% extends "base.html" %}{% from "_m.html" import icon %}{% block h %}مراکز هزینه{% endblock %}
+{% block body %}
+{% if can('setup') %}<div class="card"><h3>{{ icon('plus') }} مرکز هزینه جدید</h3>
+<form method="post" class="f"><div><label>کد</label><input name="code" required></div><div><label>نام</label><input name="name" required></div><div><button class="btn g">ثبت</button></div></form></div>{% endif %}
+<div class="card"><table><tr><th>کد</th><th>نام</th><th>فعال</th><th></th></tr>
+{% for r in rows %}<tr><form method="post"><input type="hidden" name="id" value="{{ r.id }}"><td><input name="code" value="{{ r.code }}" style="width:90px"></td>
+<td><input name="name" value="{{ r.name }}"></td><td><input type="checkbox" name="active" value="1" {{ 'checked' if r.active }} style="width:auto"></td>
+<td>{% if can('setup') %}<button class="btn sm">ذخیره</button>{% endif %}</td></form></tr>
+{% else %}<tr><td colspan="4" class="muted">مرکز هزینه‌ای تعریف نشده است (مثلا: فروش تهران، توزیع شمال، اداری).</td></tr>{% endfor %}</table></div>
+{% endblock %}

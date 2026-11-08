@@ -1,0 +1,18 @@
+<div class="f mb">
+  <div><label>کد (خالی = خودکار)</label><input name="code" value="{{ p.code if p else '' }}" dir="ltr"></div>
+  <div style="grid-column:span 2"><label>نام / نام شرکت</label><input name="name" value="{{ p.name if p else '' }}" required></div>
+  <div><label>موبایل</label><input name="mobile" value="{{ p.mobile or '' if p else '' }}" dir="ltr" inputmode="tel"></div>
+  <div><label>تلفن</label><input name="phone" value="{{ p.phone or '' if p else '' }}" dir="ltr"></div>
+  <div><label>ویزیتور مسئول (برای مشتری)</label><select name="visitor_id"><option value="">—</option>
+    {% for v in visitors %}<option value="{{ v.id }}" {{ 'selected' if p and v.id==p.visitor_id }}>{{ v.code }} - {{ v.name }}</option>{% endfor %}</select></div>
+  <div><label>کد ملی / شناسه ملی</label><input name="national_id" value="{{ p.national_id or '' if p else '' }}" dir="ltr"></div>
+  <div><label>کد اقتصادی</label><input name="economic_code" value="{{ p.economic_code or '' if p else '' }}" dir="ltr"></div>
+  <div><label>سقف اعتبار (ریال)</label><input name="credit_limit" type="number" min="0" value="{{ p.credit_limit if p else 0 }}"></div>
+  <div style="grid-column:1/-1"><label>آدرس</label><input name="address" value="{{ p.address or '' if p else '' }}"></div>
+  <div style="grid-column:1/-1"><label>توضیح</label><input name="note" value="{{ p.note or '' if p else '' }}"></div>
+</div>
+<div class="perms mb">
+  {% for k, lab in PERSON_KINDS.items() %}{% set col = 'is_' ~ k %}
+  <label><input type="checkbox" name="{{ col }}" value="1" {{ 'checked' if (p and p[col]) or (not p and k == (kind or 'customer')) }}> {{ lab }}</label>{% endfor %}
+  {% if p %}<label><input type="checkbox" name="active" value="1" {{ 'checked' if p.active }}> فعال</label>{% else %}<input type="hidden" name="active" value="1">{% endif %}
+</div>

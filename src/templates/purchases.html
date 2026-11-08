@@ -1,0 +1,11 @@
+{% extends "base.html" %}{% from "_m.html" import period, icon %}{% block h %}فاکتورهای خرید{% endblock %}
+{% block body %}<div class="card">
+{% if can("purchase") %}<div class="bar no-print"><a class="btn g" href="/purchases/new">{{ icon('plus') }} فاکتور خرید / برگشت</a></div>{% endif %}
+{% call period(f,t) %}<select name="supplier"><option value="">همه تامین‌کنندگان</option>{% for s in sups %}<option value="{{ s.id }}" {{ 'selected' if s.id==sid }}>{{ s.code }} - {{ s.name }}</option>{% endfor %}</select>{% endcall %}
+<table><tr><th>شماره</th><th>نوع</th><th>تاریخ</th><th>تامین‌کننده</th><th>انبار</th><th>ش. فاکتور تامین‌کننده</th><th class="n">تعداد</th><th class="n">مبلغ</th><th class="no-print"></th></tr>
+{% for r in rows %}<tr><td>{{ r.no }}</td><td>{% if r.kind=='return' %}<span class="tag warn">برگشت</span>{% else %}<span class="tag ok">خرید</span>{% endif %}</td>
+<td>{{ r.date }}</td><td><a href="/persons/{{ r.supplier_id }}">{{ r.sname }}</a></td><td>{{ r.whname }}</td><td>{{ r.ref_no or '' }}</td>
+<td class="n">{{ r.qty|m }}</td><td class="n">{{ (r.gross - r.discount)|m }}</td><td class="no-print"><a class="btn sm" href="/purchases/{{ r.id }}">مشاهده</a></td></tr>
+{% else %}<tr><td colspan="9" class="muted">موردی نیست.</td></tr>{% endfor %}
+{% if rows %}<tfoot><tr><td colspan="7">جمع خالص (خرید − برگشت)</td><td class="n">{{ (rows|selectattr('kind','equalto','buy')|sum(attribute='gross') - rows|selectattr('kind','equalto','buy')|sum(attribute='discount') - rows|selectattr('kind','equalto','return')|sum(attribute='gross') + rows|selectattr('kind','equalto','return')|sum(attribute='discount'))|m }}</td><td></td></tr></tfoot>{% endif %}
+</table></div>{% endblock %}

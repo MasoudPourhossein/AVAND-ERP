@@ -1,0 +1,18 @@
+{% extends "base.html" %}{% from "_m.html" import icon %}{% block h %}انبارها{% endblock %}
+{% block body %}
+{% if can('setup') %}<div class="card"><h3>{{ icon('plus') }} انبار جدید</h3>
+<form method="post" class="f"><div><label>کد</label><input name="code" required></div><div><label>نام انبار</label><input name="name" required></div>
+<div><label>انباردار</label><input name="keeper"></div><div><label>آدرس</label><input name="address"></div>
+<div><label style="display:flex;gap:8px;align-items:center;color:var(--txt)"><input type="checkbox" name="is_default" value="1" style="width:auto"> انبار پیش‌فرض فروش</label></div>
+<div><button class="btn g">ثبت انبار</button></div></form></div>{% endif %}
+<div class="card"><h3>{{ icon('warehouse') }} انبارها</h3>
+<table><tr><th>کد</th><th>نام</th><th>انباردار</th><th>آدرس</th><th>پیش‌فرض</th><th>فعال</th><th class="n">اقلام</th><th class="n">موجودی کل (واحد)</th><th></th></tr>
+{% for w in rows %}<tr><form method="post"><input type="hidden" name="id" value="{{ w.id }}">
+<td><input name="code" value="{{ w.code }}" style="width:80px"></td><td><input name="name" value="{{ w.name }}"></td>
+<td><input name="keeper" value="{{ w.keeper or '' }}"></td><td><input name="address" value="{{ w.address or '' }}"></td>
+<td><input type="checkbox" name="is_default" value="1" {{ 'checked' if w.is_default }} style="width:auto"></td>
+<td><input type="checkbox" name="active" value="1" {{ 'checked' if w.active }} style="width:auto"></td>
+<td class="n">{{ w.n_items }}</td><td class="n"><a href="/reports/stock?wh={{ w.id }}">{{ w.st|m }}</a></td>
+<td>{% if can('setup') %}<button class="btn sm">ذخیره</button>{% endif %}</td></form></tr>{% endfor %}</table>
+<p class="note">انبار پیش‌فرض در فرم‌های امانی و فروش از قبل انتخاب می‌شود؛ صدور از انبار دیگر هم در همان فرم ممکن است.</p></div>
+{% endblock %}

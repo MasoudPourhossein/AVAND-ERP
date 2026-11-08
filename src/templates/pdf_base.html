@@ -1,0 +1,23 @@
+<!doctype html><html lang="fa" dir="rtl"><head><meta charset="utf-8"><style>
+@font-face{font-family:VZ;src:url("file://{{ font_dir }}/Vazirmatn-FD-Regular.ttf");font-weight:400}
+@font-face{font-family:VZ;src:url("file://{{ font_dir }}/Vazirmatn-FD-Bold.ttf");font-weight:700}
+@page{size:A4 {{ 'landscape' if wide else 'portrait' }};margin:14mm 10mm 16mm;
+  @bottom-center{content:"صفحه " counter(page) " از " counter(pages);font-family:VZ;font-size:8pt;color:#64748b}}
+body{font-family:VZ;font-size:9pt;color:#0f172a;direction:rtl}
+.hd{display:flex;justify-content:space-between;align-items:flex-end;border-bottom:2px solid #1e3a8a;padding-bottom:6px;margin-bottom:10px}
+.hd h1{font-size:14pt;margin:0;color:#1e3a8a}
+.brandbox{text-align:center;min-width:130px}.brandbox img{max-height:85px;max-width:200px}.pw{font-size:6.5pt;color:#94a3b8;direction:ltr;font-family:VZ}.hd .m{font-size:8pt;color:#475569;text-align:left}
+h2{font-size:10.5pt;margin:12px 0 5px;color:#1e3a8a}
+table{width:100%;border-collapse:collapse;margin-bottom:6px}
+th{background:#1e3a8a;color:#fff;font-weight:700;padding:4px 5px;border:1px solid #1e3a8a;font-size:8pt}
+td{padding:3px 5px;border:1px solid #cbd5e1;font-size:8.5pt}
+tr:nth-child(even) td{background:#f8fafc}
+tr.tot td{background:#e2e8f0;font-weight:700}
+.n{text-align:left;direction:ltr}
+.neg{color:#b91c1c}
+thead{display:table-header-group}tr{page-break-inside:avoid}
+.kp{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:8px}.kp div{border:1px solid #cbd5e1;border-radius:6px;padding:5px 9px;min-width:120px}
+.kp span{display:block;font-size:7.5pt;color:#64748b}.kp b{font-size:10pt}
+.note{font-size:7.5pt;color:#64748b}
+{% block css %}{% endblock %}
+</style></head><body>{% block body %}{% endblock %}</body></html>

@@ -1,0 +1,26 @@
+{% extends "base.html" %}{% from "_m.html" import icon %}{% block h %}ورود گروهی کالا از اکسل{% endblock %}
+{% block body %}
+{% if result and result.errors %}<div class="card" style="border-color:#fecaca"><h3 style="color:var(--bad)">فایل خطا دارد؛ هیچ تغییری اعمال نشد</h3>
+<table><tr><th>ردیف اکسل</th><th>خطا</th></tr>{% for n, e in result.errors %}<tr><td>{{ n }}</td><td>{{ e }}</td></tr>{% endfor %}</table></div>
+{% elif result %}<div class="card" style="border-color:#a7f3d0;background:var(--ok-s)"><h3>ورود انجام شد</h3>
+<p>کالای جدید: <b>{{ result.created }}</b> • به‌روزرسانی: <b>{{ result.updated }}</b> • تغییر نرخ: <b>{{ result.priced }}</b>
+{% if result.rno %} • رسید موجودی اولیه <b>{{ result.rno }}</b> برای {{ result.opening }} کالا{% endif %}</p>
+<a class="btn" href="/items">مشاهده کالاها</a></div>{% endif %}
+<form method="post" enctype="multipart/form-data" class="card" style="max-width:760px">
+  <h3>{{ icon('file-spreadsheet') }} بارگذاری فایل</h3>
+  <div class="f mb">
+    <div style="grid-column:1/-1"><label>فایل اکسل (xlsx)</label><input type="file" name="file" accept=".xlsx" required></div>
+    <div><label>تاریخ (نرخ‌ها و موجودی اولیه)</label><input name="date" value="{{ today }}"></div>
+    <div><label>انبار موجودی اولیه</label><select name="wh_id">{% for w in whs %}<option value="{{ w.id }}">{{ w.name }}</option>{% endfor %}</select></div>
+  </div>
+  <div class="bar"><a class="btn s" href="/items/template.xlsx">{{ icon('download') }} دانلود فایل نمونه</a><a class="btn s" href="/items/export.xlsx">{{ icon('download') }} خروجی کالاهای فعلی</a>
+    <span class="sp"></span><button class="btn g">ورود اطلاعات</button></div>
+  <ul class="note">
+    <li>ردیف اول: عنوان ستون‌ها (مانند فایل نمونه). ستون‌های «کد کالا» و «نام کالا» الزامی است.</li>
+    <li>کد کالای موجود = به‌روزرسانی (نام، گروه، واحد، بسته‌بندی، نرخ). کد جدید = کالای جدید. خانه خالی = بدون تغییر.</li>
+    <li>کد گروه ناموجود به صورت خودکار ساخته می‌شود.</li>
+    <li>«موجودی اولیه» به واحد فروش (باکس) است و یک رسید انبار برای همه ردیف‌ها صادر می‌کند؛ در فایل خروجی این ستون خالی است تا موجودی دوبار وارد نشود.</li>
+    <li>اگر حتی یک ردیف خطا داشته باشد، هیچ تغییری اعمال نمی‌شود.</li>
+  </ul>
+</form>
+{% endblock %}

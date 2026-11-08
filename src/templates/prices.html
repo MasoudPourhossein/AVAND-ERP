@@ -1,0 +1,30 @@
+{% extends "base.html" %}{% from "_m.html" import icon %}{% block h %}نرخ خرید و فروش{% endblock %}
+{% block body %}
+<div class="card"><h3>{{ icon('tags') }} ثبت نرخ جدید</h3>
+<form method="post" class="f" id="pf">
+<div style="grid-column:1/-1"><label>کالا</label><select name="item_id" id="pi" required><option value="">انتخاب کالا</option>
+{% for i in items %}<option value="{{ i.id }}" data-b="{{ i.buy|int }}" data-p="{{ i.price }}">{{ i.code }} - {{ i.name }}</option>{% endfor %}</select></div>
+<div><label>تاریخ اعمال</label><input name="date" value="{{ today }}"></div>
+<div><label>نرخ خرید (ریال)</label><input name="buy" id="pb" type="number" min="0"></div>
+<div><label>نرخ فروش (ریال)</label><input name="price" id="pp" type="number" min="0"></div>
+<div><button class="btn g">ثبت نرخ</button></div></form>
+<p class="note">خالی گذاشتن هر نرخ = همان نرخ فعلی حفظ می‌شود. نرخ جدید از تاریخ اعمال به بعد استفاده می‌شود و فاکتورهای قبلی تغییر نمی‌کنند.
+سود = (نرخ فروش − نرخ خرید) × تعداد فروش.</p></div>
+<div class="card"><h3>{{ icon('trending-up') }} تغییر گروهی نرخ</h3>
+<form method="post" action="/items/bulk-price" class="f" onsubmit="return confirm('نرخ همه کالاهای انتخاب‌شده تغییر کند؟')">
+<div><label>گروه کالا</label><select name="group_id"><option value="">همه کالاها</option>{% for g_ in groups %}<option value="{{ g_.id }}">{{ g_.code }} - {{ g_.name }}</option>{% endfor %}</select></div>
+<div><label>کدام نرخ</label><select name="target"><option value="price">نرخ فروش</option><option value="buy">نرخ خرید</option><option value="both">هر دو</option></select></div>
+<div><label>روش</label><select name="mode"><option value="pct">درصد (مثلا 10 یا -5)</option><option value="amt">مبلغ ثابت (ریال، مثبت یا منفی)</option></select></div>
+<div><label>مقدار</label><input name="value" required></div>
+<div><label>گرد کردن به</label><select name="round"><option value="1">بدون گرد کردن</option><option value="100">۱۰۰ ریال</option><option value="1000" selected>۱٬۰۰۰ ریال</option><option value="10000">۱۰٬۰۰۰ ریال</option></select></div>
+<div><label>تاریخ اعمال</label><input name="date" value="{{ today }}"></div>
+<div><button class="btn o">اعمال تغییر</button></div></form>
+<p class="note">ویرایش گروهی نام، گروه و نرخ‌ها با اکسل هم ممکن است: «خروجی اکسل» را در صفحه کالاها بگیرید، ویرایش کنید و در «ورود گروهی از اکسل» بارگذاری کنید.</p></div>
+<div class="card"><h3>نرخ فعلی کالاها</h3><table><tr><th>کد</th><th>کالا</th><th class="n">نرخ خرید</th><th class="n">نرخ فروش</th><th class="n">سود واحد</th><th class="n">درصد سود</th></tr>
+{% for i in items %}<tr><td>{{ i.code }}</td><td><a href="/items/{{ i.id }}">{{ i.name }}</a></td><td class="n">{{ i.buy|m }}</td><td class="n">{{ i.price|m }}</td>
+<td class="n">{{ (i.price-i.buy)|m if i.buy and i.price else '—' }}</td><td class="n">{{ ((i.price-i.buy)*100/i.price)|round(1) ~ '%' if i.buy and i.price else '—' }}</td></tr>{% endfor %}</table></div>
+<div class="card"><h3>آخرین تغییرات نرخ</h3><table><tr><th>تاریخ اعمال</th><th>کد</th><th>کالا</th><th class="n">نرخ خرید</th><th class="n">نرخ فروش</th><th></th></tr>
+{% for r in rows %}<tr><td>{{ r.date }}</td><td>{{ r.code }}</td><td>{{ r.name }}</td><td class="n">{{ r.buy|m }}</td><td class="n">{{ r.price|m }}</td>
+<td><form method="post" action="/prices/{{ r.id }}/delete" onsubmit="return confirm('حذف شود؟')" class="keep-del"><button class="btn sm r">حذف</button></form></td></tr>{% endfor %}</table></div>
+{% endblock %}
+{% block js %}<script>document.getElementById('pi').addEventListener('change',e=>{const o=e.target.selectedOptions[0];document.getElementById('pb').placeholder=o.dataset.b||'';document.getElementById('pp').placeholder=o.dataset.p||''})</script>{% endblock %}

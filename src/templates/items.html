@@ -1,0 +1,47 @@
+{% extends "base.html" %}{% from "_m.html" import icon %}{% block h %}کالاها{% endblock %}
+{% block body %}
+{% if can("items") %}
+<div class="bar no-print">
+  <a class="btn s" href="/items/import">{{ icon('file-spreadsheet') }} ورود گروهی از اکسل</a>
+  <a class="btn s" href="/items/export.xlsx">{{ icon('download') }} خروجی اکسل (ویرایش گروهی)</a>
+  <a class="btn s" href="/groups">{{ icon('list') }} گروه‌های کالا</a>
+  <a class="btn s" href="/prices">{{ icon('tags') }} نرخ‌ها و تغییر گروهی نرخ</a>
+</div>
+<details class="card no-print"><summary style="cursor:pointer;font-weight:700">{{ icon('package') }} تعریف کالای جدید + موجودی اولیه</summary>
+<form method="post" class="f" id="nf" style="margin-top:14px">
+  <div><label>کد کالا</label><input name="code" required></div>
+  <div style="grid-column:span 2"><label>نام کالا</label><input name="name" required></div>
+  <div><label>گروه</label><select name="group_id"><option value="">—</option>{% for g_ in groups %}<option value="{{ g_.id }}">{{ g_.code }} - {{ g_.name }}</option>{% endfor %}</select></div>
+  <div><label>بارکد</label><input name="barcode"></div>
+  <div><label>واحد فروش</label><input name="unit" value="باکس"></div>
+  <div><label>واحد بسته‌بندی</label><input name="pack_unit" value="کارتن"></div>
+  <div><label>تعداد واحد در هر بسته</label><input name="pack" id="npk" type="number" min="1" value="1" required></div>
+  <div><label>نرخ خرید هر واحد (ریال)</label><input name="buy" id="nbu" type="number" min="0"></div>
+  <div><label>نرخ فروش هر واحد (ریال)</label><input name="price" id="npr" type="number" min="0"></div>
+  <div><label>انبار موجودی اولیه</label><select name="wh_id">{% for w in whs %}<option value="{{ w.id }}">{{ w.name }}</option>{% endfor %}</select></div>
+  <div><label>موجودی اولیه (کارتن)</label><input name="init_ctn" id="nic" type="number" min="0" value="0"></div>
+  <div><label>+ موجودی اولیه (باکس)</label><input name="init_box" id="nib" type="number" min="0" value="0"></div>
+  <div><label>تاریخ</label><input name="date" value="{{ today }}"></div>
+  <div><button class="btn g">ثبت کالا</button></div>
+</form>
+<p class="note" id="nsum">مثال: ۵۰ باکس در هر کارتن؛ ۱۰ کارتن = ۵۰۰ باکس. فروش و نرخ‌ها بر اساس واحد فروش (باکس) است.</p></details>{% endif %}
+<div class="card">
+<form class="bar no-print" method="get">
+  <select name="wh"><option value="">همه انبارها</option>{% for w in whs %}<option value="{{ w.id }}" {{ 'selected' if w.id==wh }}>{{ w.name }}</option>{% endfor %}</select>
+  <select name="group"><option value="">همه گروه‌ها</option>{% for g_ in groups %}<option value="{{ g_.id }}" {{ 'selected' if g_.id==gid }}>{{ g_.name }}</option>{% endfor %}</select>
+  <label style="margin:0;display:flex;gap:6px;align-items:center"><input type="checkbox" name="inactive" value="1" {{ 'checked' if request.args.inactive=='1' }} style="width:auto"> نمایش غیرفعال‌ها</label>
+  <button class="btn">نمایش</button><span class="sp"></span><input placeholder="جستجو..." oninput="flt(this)"></form>
+<table id="t"><tr><th>کد</th><th>نام کالا</th><th>گروه</th><th>بسته‌بندی</th><th class="n">نرخ خرید</th><th class="n">نرخ فروش</th><th class="n">سود واحد</th><th>موجودی {{ 'این انبار' if wh else 'انبارها' }}</th><th>امانی نزد ویزیتور</th><th class="no-print"></th></tr>
+{% for r in rows %}
+<tr {% if not r.active %}style="opacity:.55"{% endif %}><td>{{ r.code }}</td><td>{{ r.name }}</td><td>{{ r.group_name or '' }}</td><td>{% if r.pack > 1 %}هر {{ r.pack_unit }} {{ r.pack }} {{ r.unit }}{% else %}{{ r.unit }}{% endif %}</td>
+<td class="n">{{ r.cost|m }}</td><td class="n">{{ r.price|m }}</td><td class="n">{% if r.price and r.cost %}{{ (r.price-r.cost)|m }} <small class="muted">({{ ((r.price-r.cost)*100/r.price)|round(1) }}%)</small>{% else %}—{% endif %}</td>
+<td>{% if r.st<=0 %}<span class="tag bad">{{ pkr(r.st, r) }}</span>{% else %}{{ pkr(r.st, r) }}{% endif %}</td><td>{{ pkr(r.open_amani, r) }}</td>
+<td class="no-print"><a class="btn sm s" href="/items/{{ r.id }}">ویرایش / نرخ</a>{% if can("rep_stock") %} <a class="btn sm s" href="/reports/kardex?item={{ r.id }}">کاردکس</a>{% endif %}</td></tr>
+{% else %}<tr><td colspan="10" class="muted">کالایی نیست.</td></tr>{% endfor %}</table></div>
+{% endblock %}
+{% block js %}<script>
+function flt(i){const v=i.value.trim();document.querySelectorAll('#t tr').forEach((r,k)=>{if(k)r.style.display=r.innerText.includes(v)?'':'none'})}
+(function(){const f=document.getElementById('nf');if(!f)return;const g=id=>+document.getElementById(id).value||0,F=n=>Number(n).toLocaleString('en-US');
+ f.addEventListener('input',()=>{const p=Math.max(g('npk'),1),q=g('nic')*p+g('nib'),u=f.unit.value,pu=f.pack_unit.value;
+  document.getElementById('nsum').textContent=`هر ${pu} = ${F(p)} ${u} • موجودی اولیه = ${F(q)} ${u}`+(g('nbu')?` • نرخ خرید هر ${pu}: ${F(g('nbu')*p)}`:'')+(g('npr')?` • نرخ فروش هر ${pu}: ${F(g('npr')*p)}`:'')})})();
+</script>{% endblock %}

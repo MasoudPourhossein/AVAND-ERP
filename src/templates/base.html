@@ -1,0 +1,83 @@
+{% from "_m.html" import icon %}<!doctype html>
+<html lang="fa" dir="rtl">
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#0f172a"><title>{% block title %}{{ self.h() }}{% endblock %} | {{ COMPANY }}</title>
+<link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}"></head>
+{% set P = user.perms.split(',') if user and user.perms else [] %}
+<body class="{% for p in P %}p-{{p}} {% endfor %}{% if printing %}printing{% endif %}">
+{% include "_icons.html" %}
+{% macro nl(href, ic, text, show=True) %}{% if show %}<a href="{{ href }}" class="{{ 'on' if request.full_path.rstrip('?')==href or request.path==href }}">{{ icon(ic) }}<span>{{ text }}</span></a>{% endif %}{% endmacro %}
+<aside class="side" id="side">
+  <div class="brand">{% if HAS_LOGO %}<img src="{{ url_for('logo', v=LOGO_V) }}" alt="">{% else %}<div class="logo">{{ icon('warehouse') }}</div>{% endif %}<span>{{ COMPANY }}</span></div>
+  <div class="who"><b>{{ user.fullname or user.username }}</b>{{ PRESETS[user.role][0] if user.role in PRESETS else '' }}</div>
+  <nav class="nav">
+    {{ nl('/', 'layout-dashboard', 'داشبورد') }}
+    {% if can('amani','settle','sale','payment','rep_sales','rep_fin') %}<h4>فروش</h4>{% endif %}
+    {{ nl('/amani/new', 'send', 'صدور فاکتور امانی', can('amani')) }}
+    {{ nl('/amani?status=open', 'hourglass', 'امانی‌ها و تسویه', can('amani','settle','rep_sales')) }}
+    {{ nl('/sales/new', 'receipt', 'فاکتور فروش مستقیم', can('sale')) }}
+    {{ nl('/invoices', 'file-check', 'فاکتورهای فروش و دریافت', can('payment','settle','sale','rep_sales','rep_fin')) }}
+    {% if can('purchase','receipt','transfer','rep_stock') %}<h4>انبار و خرید</h4>{% endif %}
+    {{ nl('/purchases/new', 'inbox', 'فاکتور خرید', can('purchase')) }}
+    {{ nl('/purchases', 'list', 'فاکتورهای خرید', can('purchase','rep_stock','rep_fin')) }}
+    {{ nl('/receipts/new', 'inbox', 'رسید انبار', can('receipt')) }}
+    {{ nl('/receipts', 'list', 'رسیدهای انبار', can('receipt','rep_stock')) }}
+    {{ nl('/transfers/new', 'send', 'حواله بین انبار', can('transfer')) }}
+    {{ nl('/transfers', 'list', 'حواله‌ها', can('transfer','rep_stock')) }}
+    {% if can('items','persons','setup','rep_stock','rep_fin','rep_sales') %}<h4>اطلاعات پایه</h4>{% endif %}
+    {{ nl('/items', 'package', 'کالاها', can('items','rep_stock')) }}
+    {{ nl('/prices', 'tags', 'نرخ خرید و فروش', can('items')) }}
+    {{ nl('/persons', 'users', 'اشخاص و طرف حساب‌ها', can('persons','rep_fin','rep_sales')) }}
+    {{ nl('/warehouses', 'warehouse', 'انبارها', can('setup','rep_stock')) }}
+    {{ nl('/accounts', 'list', 'کدینگ حساب‌ها', can('setup','rep_fin')) }}
+    {{ nl('/cost-centers', 'list', 'مراکز هزینه', can('setup','rep_fin')) }}
+    {% if can('rep_stock','rep_sales','rep_fin') %}<h4>گزارش‌ها</h4>{{ nl('/reports', 'chart-column', 'همه گزارش‌ها') }}{% endif %}
+    {{ nl('/reports/stats', 'trending-up', 'آمار و مقایسه فروش', can('rep_sales')) }}
+    {{ nl('/reports/stock', 'boxes', 'موجودی و ارزش انبار', can('rep_stock')) }}
+    {{ nl('/reports/fin/daily', 'wallet', 'دریافتی روزانه ویزیتورها', can('rep_fin')) }}
+    {{ nl('/reports/fin/summary', 'scale', 'خلاصه وضعیت مالی', can('rep_fin')) }}
+    <h4>سیستم</h4>
+    {{ nl('/users', 'user-cog', 'کاربران و دسترسی‌ها', can('users')) }}
+    {{ nl('/settings', 'shield-check', 'تنظیمات (لوگو و عنوان)', can('users')) }}
+    {% if can('users') %}<a href="/backup">{{ icon('download') }}<span>پشتیبان‌گیری</span></a>{% endif %}
+    {{ nl('/password', 'key-round', 'تغییر رمز عبور') }}
+    <a href="/logout">{{ icon('log-out') }}<span>خروج</span></a>
+  </nav>
+</aside>
+<div class="shade" onclick="document.body.classList.remove('nav-open')"></div>
+<div class="main">
+  <header class="top">
+    <button class="hamb" onclick="document.body.classList.toggle('nav-open')" aria-label="منو">{{ icon('menu') }}</button>
+    <h1>{% block h %}{% endblock %}</h1>
+    <button class="sbtn no-print" onclick="openSearch()" title="جستجو (F1)">{{ icon('list') }}<span class="t">جستجو</span><span class="kbd">F1</span></button>
+    <div class="date">{{ icon('calendar','ic') }} {{ today }}</div>
+  </header>
+  <main class="content">
+    {% with msgs = get_flashed_messages(with_categories=true) %}{% for c,m in msgs %}<div class="flash {{c}}">{{ m }}</div>{% endfor %}{% endwith %}
+    {% block body %}{% endblock %}
+  </main>
+</div>
+<div class="modal" id="gsm" onclick="if(event.target===this)closeSearch()">
+  <div class="modal-box"><div class="mh"><input id="gsq" placeholder="جستجوی کالا، ویزیتور، شماره فاکتور، رسید، سند دریافت..." autocomplete="off"><span class="kbd">Esc</span></div>
+  <div class="mb2" id="gsr"><div class="res muted" style="cursor:default">حداقل یک حرف تایپ کنید.</div></div></div>
+</div>
+<script>
+(function(){
+  const m=document.getElementById('gsm'),inp=document.getElementById('gsq'),out=document.getElementById('gsr');let t,act=-1;
+  window.openSearch=function(){m.classList.add('on');inp.value='';out.innerHTML='<div class="res muted" style="cursor:default">حداقل یک حرف تایپ کنید.</div>';setTimeout(()=>inp.focus(),30)};
+  window.closeSearch=function(){m.classList.remove('on')};
+  const esc=s=>String(s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+  inp.addEventListener('input',()=>{clearTimeout(t);t=setTimeout(async()=>{const q=inp.value.trim();if(!q){out.innerHTML='';return}
+    const r=await fetch('/api/search?q='+encodeURIComponent(q));const d=await r.json();act=-1;
+    out.innerHTML=d.length?d.map(x=>`<a class="res" href="${esc(x.u)}"><span>${esc(x.l)}</span><small>${esc(x.t)}</small></a>`).join(''):'<div class="res muted" style="cursor:default">چیزی پیدا نشد.</div>'},180)});
+  inp.addEventListener('keydown',e=>{const it=[...out.querySelectorAll('a.res')];if(!it.length)return;
+    if(e.key==='ArrowDown'||e.key==='ArrowUp'){e.preventDefault();act=(act+(e.key==='ArrowDown'?1:-1)+it.length)%it.length;it.forEach((a,i)=>a.classList.toggle('act',i===act));it[act].scrollIntoView({block:'nearest'})}
+    if(e.key==='Enter'){e.preventDefault();location.href=(it[act>=0?act:0]).href}});
+  document.addEventListener('keydown',e=>{
+    if(e.key==='F1'){e.preventDefault();if(window.F1_HANDLER&&window.F1_HANDLER()!==false)return;openSearch()}
+    if(e.key==='Escape')closeSearch()});
+})();
+document.querySelectorAll('.content table').forEach(t=>{if(!t.closest('.tw')&&!t.closest('.doc-foot')&&!t.classList.contains('lines')){const w=document.createElement('div');w.className='tw';t.parentNode.insertBefore(w,t);w.appendChild(t)}});
+</script>
+{% block js %}{% endblock %}
+</body></html>

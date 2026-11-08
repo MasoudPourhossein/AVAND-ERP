@@ -1,0 +1,51 @@
+{% extends "base.html" %}{% from "_m.html" import icon, vsel %}{% block h %}{{ spec.title }}{% endblock %}
+{% macro cellv(c, kind) %}{% set v = cell_v(c) %}{% set txt = fmt(v, kind) %}{% if c is mapping and c.href %}<a href="{{ c.href }}">{{ txt }}</a>{% else %}{{ txt }}{% endif %}{% endmacro %}
+{% macro cls(c, kind) %}{% set v = cell_v(c) %}{{ 'n' if kind in ('money','num','pct') }}{% if (c is mapping and c.cls=='bad') or (kind in ('money','pct') and v is number and v < 0) %} neg{% endif %}{% endmacro %}
+{% block body %}
+<div class="print-only rep-h">{% include "_brand.html" %}<div style="flex:1"><h2>{{ spec.title }}</h2><div>{{ spec.sub }}</div></div><div class="muted">{{ COMPANY }}<br>تاریخ تهیه: {{ today }}</div></div>
+<div class="card no-print">
+  <form class="bar" method="get" style="margin:0">
+    {% if 'period' in spec.filters %}<label style="margin:0">از</label><input name="from" value="{{ g.period[0] }}" size="10">
+      <label style="margin:0">تا</label><input name="to" value="{{ g.period[1] }}" size="10">{% endif %}
+    {% if 'visitor' in spec.filters %}{{ vsel(visitors, request.args.get('visitor')|int(0)) }}{% endif %}
+    {% if 'visitor_req' in spec.filters %}{{ vsel(visitors, request.args.get('visitor')|int(visitors[0].id if visitors else 0), all=False) }}{% endif %}
+    {% if 'item' in spec.filters %}<select name="item">{% for i in items %}<option value="{{ i.id }}" {{ 'selected' if i.id==item_id }}>{{ i.code }} - {{ i.name }}</option>{% endfor %}</select>{% endif %}
+    {% if 'customer' in spec.filters %}<select name="customer"><option value="">همه مشتریان</option>{% for c in customers %}<option value="{{ c.id }}" {{ 'selected' if c.id==request.args.get('customer')|int(0) }}>{{ c.code }} - {{ c.name }}</option>{% endfor %}</select>{% endif %}
+    {% if 'supplier' in spec.filters %}<select name="supplier"><option value="">همه تامین‌کنندگان</option>{% for c in suppliers %}<option value="{{ c.id }}" {{ 'selected' if c.id==request.args.get('supplier')|int(0) }}>{{ c.code }} - {{ c.name }}</option>{% endfor %}</select>{% endif %}
+    {% if 'wh' in spec.filters %}<select name="wh"><option value="">همه انبارها</option>{% for w in whs %}<option value="{{ w.id }}" {{ 'selected' if w.id==request.args.get('wh')|int(0) }}>{{ w.name }}</option>{% endfor %}</select>{% endif %}
+    {% if 'person' in spec.filters %}<input type="hidden" name="as" value="{{ as_ }}"><select name="person">{% for c in persons %}<option value="{{ c.id }}" {{ 'selected' if c.id==person_id }}>{{ c.code }} - {{ c.name }}</option>{% endfor %}</select>{% endif %}
+    {% if 'method' in spec.filters %}<select name="method"><option value="">همه روش‌ها</option>{% for k,v in METHOD.items() %}<option value="{{k}}" {{ 'selected' if request.args.get('method')==k }}>{{v}}</option>{% endfor %}</select>{% endif %}
+    {% if spec.filters %}<button class="btn">نمایش</button>{% endif %}
+    <span class="sp"></span>
+    <a class="btn s" href="{{ xurl('xlsx') }}">{{ icon('file-spreadsheet') }} Excel</a>
+    <a class="btn s" href="{{ xurl('pdf') }}">{{ icon('file-text') }} PDF</a>
+    <button type="button" class="btn s" onclick="print()">{{ icon('printer') }} چاپ</button>
+  </form>
+  {% if spec.sub %}<div class="note">{{ spec.sub }}</div>{% endif %}
+</div>
+{% block top %}{% endblock %}
+{% if spec.kpis and not spec.cards %}<div class="grid {{ 'g4' if spec.kpis|length >= 4 else 'g3' }} kpis mb">
+  {% for lab, val, kind in spec.kpis %}<div class="kpi"><span>{{ lab }}</span><b class="{{ 'neg' if val is number and val < 0 }}">{{ fmt(val, kind) if val is not none else '—' }}</b></div>{% endfor %}
+</div>{% endif %}
+{% if spec.charts %}<div class="grid {{ 'g2' if spec.charts|length > 1 else '' }}">
+  {% for c in spec.charts %}<div class="card" {% if loop.last and spec.charts|length is odd and spec.charts|length > 1 %}style="grid-column:1/-1"{% endif %}><h3>{{ icon('chart-column') }} {{ c.title }}</h3>
+  <div class="chart" {% if c.horizontal %}style="height:{{ [280, c.labels|length * 34 + 60]|max }}px"{% endif %}><canvas id="{{ c.id }}"></canvas></div></div>{% endfor %}
+</div>{% endif %}
+{% for s in spec.sections %}
+<div class="card">
+  {% if s.title %}<h3>{{ s.title }}</h3>{% endif %}
+  <table>
+    <thead><tr>{% for lab, kind in s.cols %}<th class="{{ 'n' if kind in ('money','num','pct') }}">{{ lab }}</th>{% endfor %}</tr></thead>
+    <tbody>{% for r in s.rows %}<tr>{% for c in r %}{% set kind = s.cols[loop.index0][1] %}<td class="{{ cls(c, kind) }}">{{ cellv(c, kind) }}</td>{% endfor %}</tr>
+    {% else %}<tr><td colspan="{{ s.cols|length }}" class="muted">موردی نیست.</td></tr>{% endfor %}</tbody>
+    {% if s.total and s.rows %}<tfoot><tr>{% for c in s.total %}{% set kind = s.cols[loop.index0][1] %}<td class="{{ cls(c, kind) }}">{{ cellv(c, kind) }}</td>{% endfor %}</tr></tfoot>{% endif %}
+  </table>
+</div>
+{% endfor %}
+{% if spec.note %}<p class="note">{{ spec.note }}</p>{% endif %}
+{% endblock %}
+{% block js %}{% if spec.charts %}
+<script src="{{ url_for('static', filename='js/chart.umd.min.js') }}"></script>
+<script src="{{ url_for('static', filename='js/charts.js') }}"></script>
+<script>{% for c in spec.charts %}mkChart({{ c.id|tojson }},{type:{{ c.type|tojson }},horizontal:{{ (c.horizontal or false)|tojson }},labels:{{ c.labels|tojson }},sets:{{ c.sets|tojson }}});{% endfor %}</script>
+{% endif %}{% endblock %}

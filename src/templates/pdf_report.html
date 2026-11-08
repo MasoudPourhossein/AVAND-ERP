@@ -1,0 +1,15 @@
+{% extends "pdf_base.html" %}
+{% block body %}
+<div class="hd"><div class="brandbox">{% if logo %}<img src="file://{{ logo }}"><br>{% endif %}<span class="pw">{{ POWERED }}</span></div>
+<div style="flex:1;padding:0 12px"><h1>{{ spec.title }}</h1><div>{{ spec.sub }}</div></div><div class="m">{{ COMPANY }}<br>تاریخ تهیه: {{ now }}<br>تهیه‌کننده: {{ user.fullname or user.username }}</div></div>
+{% if spec.kpis %}<div class="kp">{% for lab, val, kind in spec.kpis %}<div><span>{{ lab }}</span><b class="{{ 'neg' if val is number and val < 0 }}">{{ fmt(val, kind) if val is not none else '—' }}</b></div>{% endfor %}</div>{% endif %}
+{% for s in spec.sections %}
+{% if s.title %}<h2>{{ s.title }}</h2>{% endif %}
+<table><thead><tr>{% for lab, kind in s.cols %}<th>{{ lab }}</th>{% endfor %}</tr></thead><tbody>
+{% for r in s.rows %}<tr>{% for c in r %}{% set kind = s.cols[loop.index0][1] %}{% set v = cell_v(c) %}<td class="{{ 'n' if kind in ('money','num','pct') }}{{ ' neg' if kind in ('money','pct') and v is number and v < 0 }}">{{ fmt(v, kind) }}</td>{% endfor %}</tr>
+{% else %}<tr><td colspan="{{ s.cols|length }}">موردی نیست.</td></tr>{% endfor %}
+{% if s.total and s.rows %}<tr class="tot">{% for c in s.total %}{% set kind = s.cols[loop.index0][1] %}<td class="{{ 'n' if kind in ('money','num','pct') }}">{{ fmt(cell_v(c), kind) }}</td>{% endfor %}</tr>{% endif %}
+</tbody></table>
+{% endfor %}
+{% if spec.note %}<p class="note">{{ spec.note }}</p>{% endif %}
+{% endblock %}

@@ -1,0 +1,154 @@
+{% extends "base.html" %}{% from "_m.html" import icon %}
+{% set TITLES = {'receipt':'رسید انبار جدید','purchase':'فاکتور خرید / برگشت از خرید','transfer':'حواله بین انبار','amani':'صدور فاکتور امانی','sale':'فاکتور فروش مستقیم'} %}
+{% set PARTY = {'purchase':('تامین‌کننده','supplier'),'amani':('ویزیتور','visitor'),'sale':('مشتری','customer')} %}
+{% set OUT = mode in ('amani','sale','transfer') %}
+{% set HASPRICE = mode in ('receipt','purchase','sale') %}
+{% block h %}{{ TITLES[mode] }}{% endblock %}
+{% block body %}
+{% set F = request.form %}
+<form method="post" class="card" id="frm" autocomplete="off">
+  <div class="f" style="margin-bottom:16px">
+    <div><label>تاریخ</label><input name="date" value="{{ F.date or today }}" required></div>
+    {% if mode=='purchase' %}<div><label>نوع</label><select name="kind" id="pkind"><option value="buy">خرید</option><option value="return" {{ 'selected' if F.kind=='return' }}>برگشت از خرید</option></select></div>{% endif %}
+    {% if mode=='transfer' %}
+      <div><label>از انبار</label><select name="from_wh" id="whsel" required>{% for w in whs %}<option value="{{ w.id }}" {{ 'selected' if (F.from_wh or wh)|string==w.id|string }}>{{ w.name }}</option>{% endfor %}</select></div>
+      <div><label>به انبار</label><select name="to_wh" required>{% for w in whs %}<option value="{{ w.id }}" {{ 'selected' if F.to_wh|string==w.id|string }}>{{ w.name }}</option>{% endfor %}</select></div>
+    {% else %}
+      <div><label>انبار</label><select name="wh_id" id="whsel" required>{% for w in whs %}<option value="{{ w.id }}" {{ 'selected' if (F.wh_id or wh)|string==w.id|string }}>{{ w.name }}{{ ' (پیش‌فرض)' if w.is_default }}</option>{% endfor %}</select></div>
+    {% endif %}
+    {% if mode in PARTY %}{% set plab, pkind = PARTY[mode] %}{% set sel = (F.party_id or request.args.party or '')|string %}
+    <div class="pick"><label>{{ plab }} (کد یا نام را تایپ کنید)</label>
+      <div style="display:flex;gap:6px"><input id="pin" placeholder="کد یا نام {{ plab }}" style="flex:1" value="{% for v in parties %}{% if v.id|string==sel %}{{ v.code }} - {{ v.name }}{% endif %}{% endfor %}">
+      {% if mode=='sale' %}<button type="button" class="btn s sm" onclick="quickAdd()" title="مشتری جدید">{{ icon('plus') }}</button>{% endif %}</div>
+      <input type="hidden" name="party_id" id="pid" value="{{ sel }}"></div>
+    {% endif %}
+    {% if mode=='sale' %}<div><label>ویزیتور (اختیاری)</label><select name="visitor_id" id="vsel"><option value="">—</option>
+      {% for v in visitors %}<option value="{{ v.id }}" {{ 'selected' if F.visitor_id|string==v.id|string }}>{{ v.code }} - {{ v.name }}</option>{% endfor %}</select></div>{% endif %}
+    {% if mode=='purchase' %}<div><label>شماره فاکتور تامین‌کننده</label><input name="ref_no" value="{{ F.ref_no or '' }}"></div>{% endif %}
+    {% if mode in ('purchase','sale') %}<div><label>تخفیف کل (ریال)</label><input name="discount" id="disc" type="number" min="0" value="{{ F.discount or 0 }}" oninput="calc()"></div>{% endif %}
+    <div style="grid-column:1/-1"><label>توضیح</label><input name="note" value="{{ F.note or '' }}"></div>
+  </div>
+  <div class="note no-print" style="margin:0 0 8px">کد یا ابتدای نام کالا را تایپ کنید • <span class="kbd">F1</span> جستجوی کالا • <span class="kbd">Enter</span> ردیف بعد • <span class="kbd">Insert</span> ردیف جدید</div>
+  <table class="lines"><thead><tr><th style="width:36px">#</th><th style="width:44px"></th><th style="width:120px">کد کالا</th><th>نام کالا</th><th style="width:150px">موجودی انبار</th>
+    <th style="width:90px">کارتن</th><th style="width:90px">باکس</th><th style="width:150px">جمع تعداد</th>
+    {% if HASPRICE or mode=='amani' %}<th style="width:140px">{{ 'نرخ خرید واحد' if mode in ('receipt','purchase') else 'نرخ فروش واحد' }}</th><th class="n" style="width:130px">مبلغ</th>{% endif %}</tr></thead>
+  <tbody id="rows"></tbody>
+  <tfoot><tr><td colspan="7">جمع</td><td class="n" id="tq">0</td>{% if HASPRICE or mode=='amani' %}<td></td><td class="n" id="tv">0</td>{% endif %}</tr>
+  {% if mode in ('purchase','sale') %}<tr><td colspan="7">مبلغ پس از تخفیف</td><td></td><td></td><td class="n" id="tn">0</td></tr>{% endif %}</tfoot></table>
+  <div class="bar" style="margin-top:14px">
+    <button type="button" class="btn s" onclick="addRow(true)">{{ icon('plus') }} ردیف جدید</button>
+    <button type="button" class="btn s" onclick="openItems()">{{ icon('list') }} جستجوی کالا (F1)</button>
+    <span class="sp"></span>
+    <button class="btn g">ثبت {{ TITLES[mode].split(' / ')[0].replace(' جدید','') }}</button>
+  </div>
+</form>
+<template id="rt"><tr><td class="i"></td><td class="del-td" style="text-align:left"><button type="button" class="btn sm r del" tabindex="-1">×</button></td>
+  <td class="pick" data-l="کد کالا"><input class="code" placeholder="کد"><input type="hidden" name="item_id"></td>
+  <td class="pick" data-l="نام کالا"><input class="name" placeholder="نام کالا"></td>
+  <td class="st wide" data-l="موجودی انبار" style="font-size:12px">-</td>
+  <td data-l="کارتن"><input name="ctn" type="number" min="0" inputmode="numeric"></td><td data-l="باکس"><input name="box" type="number" min="0" inputmode="numeric"></td>
+  <td class="tqr wide" data-l="جمع تعداد" style="font-size:12px">-</td>
+  {% if HASPRICE %}<td data-l="نرخ واحد"><input name="price" type="number" min="0" inputmode="numeric"></td><td class="n va" data-l="مبلغ">-</td>
+  {% elif mode=='amani' %}<td class="n pr" data-l="نرخ فروش واحد">-</td><td class="n va" data-l="مبلغ">-</td>{% endif %}</tr></template>
+<div class="pick-list" id="plist" style="position:fixed"></div>
+<div class="modal" id="im" onclick="if(event.target===this)closeItems()">
+  <div class="modal-box"><div class="mh"><input id="imq" placeholder="جستجوی کد یا نام کالا"><span class="kbd">Esc</span></div>
+  <div class="mb2"><table><thead><tr><th>کد</th><th>نام کالا</th><th class="n">موجودی این انبار</th><th class="n">نرخ فروش</th><th class="n">نرخ خرید</th></tr></thead><tbody id="imr"></tbody></table></div></div>
+</div>
+{% endblock %}
+{% block js %}
+<script>
+const MODE={{ mode|tojson }},OUT={{ OUT|tojson }},HASPRICE={{ HASPRICE|tojson }};
+const ST={{ stock_map|tojson }};
+const IT=[{% for i in items if i.active %}{id:{{ i.id }},code:{{ i.code|tojson }},name:{{ i.name|tojson }},p:{{ i.price|int }},c:{{ i.cost|round|int }},k:{{ i.pack or 1 }},u:{{ i.unit|tojson }},pu:{{ i.pack_unit|tojson }}},{% endfor %}];
+let PS=[{% for v in parties %}{id:{{ v.id }},code:{{ v.code|tojson }},name:{{ v.name|tojson }},vid:{{ (v.visitor_id or 0)|tojson }}},{% endfor %}];
+const byId=Object.fromEntries(IT.map(x=>[x.id,x]));
+const f=n=>Number(n||0).toLocaleString('en-US');
+const esc=s=>String(s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+const pkf=(q,x)=>{q=+q||0;if(!x||x.k<=1||!q)return f(q)+(x?' '+x.u:'');const c=Math.floor(Math.abs(q)/x.k),b=Math.abs(q)%x.k;return f(q)+' '+x.u+' ('+(q<0?'-':'')+f(c)+' '+x.pu+(b?' + '+f(b):'')+')'};
+const norm=s=>String(s||'').trim().toLowerCase().replace(/[يى]/g,'ی').replace(/ك/g,'ک');
+const rowsEl=document.getElementById('rows'),PL=document.getElementById('plist'),WS=document.getElementById('whsel');
+const stk=x=>x?((ST[x.id]||{})[WS.value]||0):0;
+let cur=null,act=-1,list=[];
+function match(arr,q,field){q=norm(q);if(!q)return[];
+  const a=arr.filter(x=>norm(x[field]).startsWith(q)),b=arr.filter(x=>!norm(x[field]).startsWith(q)&&(norm(x.code).includes(q)||norm(x.name).includes(q)));
+  return a.concat(b).slice(0,12)}
+function showList(inp,items,onPick){list=items;act=items.length?0:-1;cur={inp,onPick};
+  if(!items.length){PL.style.display='none';return}
+  const r=inp.getBoundingClientRect();PL.style.top=(r.bottom+2)+'px';PL.style.right=(innerWidth-r.right)+'px';PL.style.left='auto';PL.style.width=Math.max(r.width,300)+'px';
+  PL.innerHTML=items.map((x,i)=>`<div class="${i===0?'act':''}" data-i="${i}"><span>${esc(x.code)} - ${esc(x.name)}</span><small>${x.k!==undefined?'موجودی '+f(stk(x)):''}</small></div>`).join('');
+  PL.style.display='block'}
+function hideList(){PL.style.display='none';cur=null}
+PL.addEventListener('mousedown',e=>{const d=e.target.closest('div[data-i]');if(d&&cur){e.preventDefault();cur.onPick(list[+d.dataset.i]);hideList()}});
+function keyNav(e){if(PL.style.display!=='block')return false;const it=[...PL.children];
+  if(e.key==='ArrowDown'||e.key==='ArrowUp'){e.preventDefault();act=(act+(e.key==='ArrowDown'?1:-1)+it.length)%it.length;it.forEach((d,i)=>d.classList.toggle('act',i===act));it[act].scrollIntoView({block:'nearest'});return true}
+  if(e.key==='Enter'&&act>=0){e.preventDefault();cur.onPick(list[act]);hideList();return true}
+  if(e.key==='Escape'){hideList();return true}return false}
+function defPrice(x){return MODE==='sale'||MODE==='amani'?x.p:x.c}
+function setItem(tr,x){tr.querySelector('input[name=item_id]').value=x?x.id:'';tr.querySelector('.code').value=x?x.code:'';tr.querySelector('.name').value=x?x.name:'';
+  tr.querySelector('.st').textContent=x?pkf(stk(x),x):'-';
+  if(MODE==='amani')tr.querySelector('.pr').textContent=x?f(x.p):'-';
+  if(HASPRICE){const pi=tr.querySelector('input[name=price]');if(x&&!pi.value)pi.value=defPrice(x)||''}
+  const ci=tr.querySelector('input[name=ctn]');ci.disabled=!!(x&&x.k<=1);if(ci.disabled)ci.value='';ci.placeholder=x&&x.k>1?('×'+x.k):'';
+  if(x){const dup=[...rowsEl.querySelectorAll('input[name=item_id]')].filter(h=>h.value==x.id).length>1;if(dup)alert('این کالا قبلا در سند آمده است.')}
+  calc();if(x)tr.querySelector(x.k>1?'input[name=ctn]':'input[name=box]').focus()}
+function addRow(focus){const t=document.getElementById('rt').content.cloneNode(true);const tr=t.querySelector('tr');
+  const code=tr.querySelector('.code'),name=tr.querySelector('.name');
+  code.addEventListener('input',()=>{tr.querySelector('input[name=item_id]').value='';showList(code,match(IT,code.value,'code'),x=>setItem(tr,x))});
+  name.addEventListener('input',()=>{tr.querySelector('input[name=item_id]').value='';showList(name,match(IT,name.value,'name'),x=>setItem(tr,x))});
+  [code,name].forEach(inp=>{inp.addEventListener('keydown',e=>{if(keyNav(e))return;
+      if(e.key==='Enter'){e.preventDefault();const ex=IT.find(x=>norm(x.code)===norm(code.value));if(ex)setItem(tr,ex)}});
+    inp.addEventListener('blur',()=>setTimeout(()=>{if(cur&&cur.inp===inp)hideList();
+      if(!tr.querySelector('input[name=item_id]').value){const ex=IT.find(x=>norm(x.code)===norm(code.value));if(ex)setItem(tr,ex)}},150));
+    inp.addEventListener('focus',()=>{lastRow=tr})});
+  tr.querySelectorAll('input[type=number]').forEach(i=>{i.addEventListener('input',calc);i.addEventListener('focus',()=>{lastRow=tr});
+    i.addEventListener('keydown',e=>{if(e.key==='Enter'){e.preventDefault();if(i.name==='ctn'){tr.querySelector('input[name=box]').focus();return}
+      if(i.name==='box'&&HASPRICE){tr.querySelector('input[name=price]').focus();return}
+      const nx=tr.nextElementSibling||addRow(false);nx.querySelector('.code').focus()}})});
+  tr.querySelector('.del').addEventListener('click',()=>{tr.remove();calc()});
+  rowsEl.appendChild(tr);num();if(focus)code.focus();return tr}
+function num(){rowsEl.querySelectorAll('tr').forEach((r,i)=>r.querySelector('.i').textContent=i+1)}
+function isOut(){return OUT||(MODE==='purchase'&&document.getElementById('pkind').value==='return')}
+function calc(){let q=0,v=0;rowsEl.querySelectorAll('tr').forEach(r=>{const x=byId[r.querySelector('input[name=item_id]').value],ci=r.querySelector('input[name=ctn]'),bi=r.querySelector('input[name=box]'),
+  n=(+ci.value||0)*(x?x.k:1)+(+bi.value||0);r.querySelector('.tqr').textContent=n?pkf(n,x):'-';
+  if(x)r.querySelector('.st').textContent=pkf(stk(x),x);
+  q+=n;const over=!!(x&&isOut()&&n>stk(x));ci.style.background=bi.style.background=over?'#fee2e2':'';
+  let s=0;if(HASPRICE)s=n*(+r.querySelector('input[name=price]').value||0);else if(MODE==='amani')s=x?n*x.p:0;
+  v+=s;const va=r.querySelector('.va');if(va)va.textContent=f(s)});
+  document.getElementById('tq').textContent=f(q);const tv=document.getElementById('tv');if(tv)tv.textContent=f(v);
+  const tn=document.getElementById('tn');if(tn)tn.textContent=f(v-(+document.getElementById('disc').value||0));num()}
+let lastRow=null;
+WS.addEventListener('change',calc);const PK=document.getElementById('pkind');if(PK)PK.addEventListener('change',calc);
+const IM=document.getElementById('im'),IQ=document.getElementById('imq'),IR=document.getElementById('imr');let mAct=0,mList=[];
+function renderM(){const q=norm(IQ.value);mList=q?IT.filter(x=>norm(x.code).includes(q)||norm(x.name).includes(q)):IT.slice();mAct=0;
+  IR.innerHTML=mList.map((x,i)=>`<tr data-i="${i}" style="cursor:pointer"><td>${esc(x.code)}</td><td>${esc(x.name)}</td><td class="n">${f(stk(x))}</td><td class="n">${f(x.p)}</td><td class="n">${f(x.c)}</td></tr>`).join('')||'<tr><td colspan="5" class="muted">موردی نیست.</td></tr>';hl()}
+function hl(){[...IR.children].forEach((r,i)=>r.style.background=i===mAct?'var(--pri-s)':'')}
+function openItems(){IM.classList.add('on');IQ.value='';renderM();setTimeout(()=>IQ.focus(),30)}
+function closeItems(){IM.classList.remove('on')}
+function pickM(x){closeItems();let tr=(lastRow&&!lastRow.querySelector('input[name=item_id]').value)?lastRow:[...rowsEl.children].find(r=>!r.querySelector('input[name=item_id]').value)||addRow(false);setItem(tr,x)}
+IQ.addEventListener('input',renderM);
+IQ.addEventListener('keydown',e=>{if(e.key==='ArrowDown'||e.key==='ArrowUp'){e.preventDefault();mAct=Math.max(0,Math.min(mList.length-1,mAct+(e.key==='ArrowDown'?1:-1)));hl();IR.children[mAct]&&IR.children[mAct].scrollIntoView({block:'nearest'})}
+  if(e.key==='Enter'){e.preventDefault();if(mList[mAct])pickM(mList[mAct])}if(e.key==='Escape')closeItems()});
+IR.addEventListener('click',e=>{const r=e.target.closest('tr[data-i]');if(r)pickM(mList[+r.dataset.i])});
+window.F1_HANDLER=function(){if(document.getElementById('gsm').classList.contains('on'))return false;openItems();return true};
+document.addEventListener('keydown',e=>{if(e.key==='Insert'){e.preventDefault();addRow(true)}});
+// party picker
+const PIN=document.getElementById('pin'),PID=document.getElementById('pid');
+function pickParty(x){PID.value=x.id;PIN.value=x.code+' - '+x.name;const vs=document.getElementById('vsel');if(vs&&x.vid&&!vs.value)vs.value=x.vid;const c=rowsEl.querySelector('.code');c&&c.focus()}
+if(PIN){PIN.addEventListener('input',()=>{PID.value='';showList(PIN,match(PS,PIN.value,/^[a-z0-9]/i.test(PIN.value.trim())?'code':'name'),pickParty)});
+  PIN.addEventListener('focus',()=>{if(!PIN.value)showList(PIN,PS.slice(0,12),pickParty)});
+  PIN.addEventListener('keydown',e=>{if(!keyNav(e)&&e.key==='Enter')e.preventDefault()});
+  PIN.addEventListener('blur',()=>setTimeout(()=>{if(cur&&cur.inp===PIN)hideList()},150))}
+async function quickAdd(){const name=prompt('نام مشتری جدید:');if(!name)return;const mobile=prompt('موبایل (اختیاری):')||'';
+  const vs=document.getElementById('vsel');
+  const r=await fetch('/api/persons',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({name,mobile,kind:'customer',visitor_id:vs?vs.value:''})});
+  const d=await r.json();if(d.error){alert(d.error);return}const x={id:d.id,code:d.code,name:d.name,vid:0};PS.unshift(x);pickParty(x)}
+document.getElementById('frm').addEventListener('submit',e=>{
+  if(PIN&&!PID.value){e.preventDefault();alert('{{ PARTY[mode][0] if mode in PARTY else "" }} را از لیست انتخاب کنید.');PIN.focus();return}
+  const bad=[...rowsEl.children].find(r=>(r.querySelector('.code').value||r.querySelector('.name').value)&&!r.querySelector('input[name=item_id]').value);
+  if(bad){e.preventDefault();alert('کالای ردیف '+bad.querySelector('.i').textContent+' از لیست انتخاب نشده است.');bad.querySelector('.code').focus()}});
+window.addEventListener('scroll',e=>{if(!PL.contains(e.target))hideList()},true);
+for(let i=0;i<(innerWidth<640?1:5);i++)addRow(false);
+(PIN&&!PIN.value?PIN:rowsEl.querySelector('.code')).focus();
+</script>
+{% endblock %}

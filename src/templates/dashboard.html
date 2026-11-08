@@ -1,0 +1,65 @@
+{% extends "base.html" %}{% from "_m.html" import icon, delta %}{% block h %}داشبورد{% endblock %}
+{% block body %}
+{% if cmp %}
+<div class="grid g3 kpis mb">
+  {% for c in cmp %}
+  <div class="kpi" style="--c:{{ ['#4f46e5','#0891b2','#7c3aed'][loop.index0] }}">
+    <span>فروش {{ c.label }} (ریال)</span><b>{{ c.cur.amount|m }}</b>
+    {{ delta(c.ch) }} <small>نسبت به {{ c.plabel }} ({{ c.prev.amount|m }})</small>
+  </div>{% endfor %}
+</div>
+{% endif %}
+<div class="grid kauto mb">
+  {% if k.receivable is defined %}<div class="kpi" style="--c:#ea580c"><span>مانده مطالبات از مشتریان</span><b>{{ k.receivable|m }}</b></div>
+  <div class="kpi" style="--c:#059669"><span>دریافتی امروز</span><b>{{ k.coll_today|m }}</b></div>
+  <div class="kpi" style="--c:#dc2626"><span>بدهی به تامین‌کنندگان</span><b>{{ k.payable|m }}</b></div>{% endif %}
+  {% if k.stock_val is defined %}<div class="kpi" style="--c:#7c3aed"><span>ارزش انبارها (بهای خرید)</span><b>{{ k.stock_val|m }}</b></div>
+  <div class="kpi" style="--c:#ca8a04"><span>کالای امانی نزد ویزیتورها</span><b>{{ k.open_qty|m }}</b></div>{% endif %}
+  {% if k.open_docs is defined %}<div class="kpi" style="--c:#0891b2"><span>فاکتور امانی باز</span><b>{{ k.open_docs }}</b></div>{% endif %}
+</div>
+<div class="grid g4 tiles mb">
+  {% if can('amani') %}<a href="/amani/new"><div class="ti">{{ icon('send') }}</div><div><b>صدور فاکتور امانی</b><small>تحویل کالا به ویزیتور</small></div></a>{% endif %}
+  {% if can('settle') %}<a href="/amani?status=open"><div class="ti">{{ icon('undo-2') }}</div><div><b>تسویه امانی</b><small>مرجوعی و فاکتور قطعی</small></div></a>{% endif %}
+  {% if can('payment') %}<a href="/invoices?only=diff&from=1300/01/01"><div class="ti">{{ icon('credit-card') }}</div><div><b>ثبت دریافتی</b><small>پوز و نقد</small></div></a>{% endif %}
+  {% if can('sale') %}<a href="/sales/new"><div class="ti">{{ icon('receipt') }}</div><div><b>فاکتور فروش</b><small>فروش مستقیم از انبار</small></div></a>{% endif %}
+  {% if can('purchase') %}<a href="/purchases/new"><div class="ti">{{ icon('inbox') }}</div><div><b>فاکتور خرید</b><small>از تامین‌کننده</small></div></a>{% endif %}
+</div>
+<div class="grid g2">
+  {% if chart %}<div class="card"><h3>{{ icon('chart-column') }} فروش ۱۴ روز اخیر (ریال)</h3><div class="chart"><canvas id="c14"></canvas></div></div>{% endif %}
+  {% if open_list is defined %}<div class="card"><h3>{{ icon('hourglass') }} فاکتورهای امانی باز</h3>
+    <table><tr><th>شماره</th><th>تاریخ</th><th>ویزیتور</th><th class="n">تعداد</th><th></th></tr>
+    {% for c in open_list %}<tr><td>{{ c.no }}</td><td>{{ c.date }}</td><td>{{ c.vname }}</td><td class="n">{{ c.qty|m }}</td>
+      <td>{% if can('settle') %}<a class="btn sm o" href="/amani/{{c.id}}/settle">تسویه</a>{% else %}<a class="btn sm s" href="/amani/{{c.id}}">مشاهده</a>{% endif %}</td></tr>
+    {% else %}<tr><td colspan="5" class="muted">فاکتور امانی بازی نیست.</td></tr>{% endfor %}</table></div>{% endif %}
+</div>
+<div class="grid g2">
+  {% if unpaid is defined %}<div class="card" style="grid-column:1/-1"><h3>{{ icon('clock') }} فاکتورهای قطعی وصول‌نشده <span class="sp"></span><span class="tag bad">{{ unpaid|length }} فاکتور — {{ unpaid_sum|m }} ریال</span></h3>
+    <div class="tw scroll"><table><thead><tr><th>فاکتور</th><th>تاریخ</th><th>مشتری</th><th>ویزیتور</th><th class="n">روز</th><th class="n">مبلغ</th><th class="n">مانده</th></tr></thead><tbody>
+    {% for u in unpaid %}<tr><td><a href="/invoices/{{ u.id }}">{{ u.no }}</a></td><td>{{ u.date }}</td><td>{{ u.c }}</td><td>{{ u.v }}</td>
+      <td class="n">{% if u.age > 30 %}<span class="tag bad">{{ u.age }}</span>{% elif u.age > 7 %}<span class="tag warn">{{ u.age }}</span>{% else %}{{ u.age }}{% endif %}</td>
+      <td class="n">{{ u.total|m }}</td><td class="n neg">{{ u.rem|m }}</td></tr>
+    {% else %}<tr><td colspan="7" class="muted">همه فاکتورها وصول شده‌اند.</td></tr>{% endfor %}</tbody></table></div></div>{% endif %}
+  {% if live is defined %}<div class="card" style="grid-column:1/-1"><h3>{{ icon('boxes') }} موجودی زنده <span class="sp"></span><small class="muted" id="lvt">به‌روزرسانی خودکار</small></h3>
+    <input id="lvq" placeholder="جستجوی کد یا نام کالا..." style="width:100%;margin-bottom:10px" class="no-print">
+    <div class="tw scroll"><table id="lv"><thead><tr><th>کد</th><th>کالا</th><th>انبارها</th><th>امانی نزد ویزیتورها</th><th>کل</th></tr></thead><tbody>
+    {% for r in live %}<tr><td>{{ r.code }}</td><td><a href="/reports/kardex?item={{ r.id }}">{{ r.name }}</a></td>
+      <td class="{{ 'neg' if r.s <= 0 }}">{{ pkr(r.s, r.row) }}</td><td>{{ pkr(r.a, r.row) }}</td><td><b>{{ pkr(r.s + r.a, r.row) }}</b></td></tr>{% endfor %}
+    </tbody></table></div></div>{% endif %}
+</div>
+{% if low %}<div class="card"><h3>{{ icon('package') }} کالاهای بدون موجودی</h3>{% for r in low %}<span class="tag bad" style="margin:3px">{{ r.code }} - {{ r.name }}</span>{% endfor %}</div>{% endif %}
+{% endblock %}
+{% block js %}
+{% if live is defined %}<script>
+(function(){const tb=document.querySelector('#lv tbody'),q=document.getElementById('lvq');
+ const esc=s=>String(s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+ const flt=()=>{const v=q.value.trim();[...tb.rows].forEach(r=>r.style.display=!v||r.innerText.includes(v)?'':'none')};q.addEventListener('input',flt);
+ async function load(){try{const d=await (await fetch('/api/stock')).json();
+  tb.innerHTML=d.map(r=>`<tr><td>${esc(r.code)}</td><td><a href="/reports/kardex?item=${r.id}">${esc(r.name)}</a></td><td class="${r.stock<=0?'neg':''}">${esc(r.stock_t)}</td><td>${esc(r.amani_t)}</td><td><b>${esc(r.total_t)}</b></td></tr>`).join('');
+  flt();document.getElementById('lvt').textContent='به‌روز: '+new Date().toLocaleTimeString('fa-IR')}catch(e){}}
+ setInterval(load,30000)})();
+</script>{% endif %}
+{% if chart %}
+<script src="{{ url_for('static', filename='js/chart.umd.min.js') }}"></script>
+<script src="{{ url_for('static', filename='js/charts.js') }}"></script>
+<script>mkChart('c14',{type:'bar',labels:{{ chart.labels|tojson }},sets:[['فروش',{{ chart.data|tojson }}]]});</script>
+{% endif %}{% endblock %}

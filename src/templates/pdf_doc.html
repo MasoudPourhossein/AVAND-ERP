@@ -1,0 +1,20 @@
+{% extends "pdf_base.html" %}{% set wide = false %}
+{% block css %}.meta{display:flex;flex-wrap:wrap;gap:4px 30px;margin-bottom:10px;font-size:9.5pt}.foot{width:auto;margin-right:auto;margin-top:8px}.foot td{font-weight:700;font-size:9.5pt}
+.sign{display:flex;justify-content:space-around;margin-top:50px}.sign div{border-top:1px dashed #64748b;width:180px;text-align:center;padding-top:4px}
+td,th{font-size:9pt}{% endblock %}
+{% block body %}
+<div class="hd"><div class="brandbox">{% if logo %}<img src="file://{{ logo }}"><br>{% endif %}<span class="pw">{{ POWERED }}</span></div>
+<div style="flex:1;padding:0 12px"><h1>{{ doc.title }}</h1><div>{{ COMPANY }}</div></div><div class="m" style="font-size:10pt">شماره: <b>{{ doc.no }}</b><br>تاریخ: <b>{{ doc.date }}</b></div></div>
+<div class="meta">
+  {% if doc.party %}<div>{{ doc.party_label or 'ویزیتور' }}: <b>{{ doc.party }}</b></div>{% endif %}
+  {% if doc.status %}<div>وضعیت: <b>{{ doc.status }}</b></div>{% endif %}
+  {% if doc.extra %}<div>{{ doc.extra }}</div>{% endif %}
+  {% if doc.note %}<div>توضیح: {{ doc.note }}</div>{% endif %}
+  {% if doc.user %}<div>ثبت‌کننده: {{ doc.user }}</div>{% endif %}
+</div>
+<table><thead><tr><th>ردیف</th>{% for c in doc.cols %}<th>{{ c }}</th>{% endfor %}</tr></thead><tbody>
+{% for r in doc.rows %}<tr><td>{{ loop.index }}</td>{% for v in r %}<td class="{{ 'n' if loop.index > 2 and (v|string|replace(',','')|replace('-','')).isdigit() }}">{{ v }}</td>{% endfor %}</tr>{% endfor %}
+</tbody></table>
+<table class="foot">{% for k, v in doc.foot %}<tr><td>{{ k }}</td><td class="n" style="min-width:120px">{{ v }}</td></tr>{% endfor %}</table>
+<div class="sign">{% for s in doc.sign %}<div>امضای {{ s }}</div>{% endfor %}</div>
+{% endblock %}

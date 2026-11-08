@@ -1,0 +1,32 @@
+{% extends "base.html" %}{% from "_m.html" import icon %}{% block h %}فاکتور فروش {{ c.no }} - {{ c.cname }}{% endblock %}
+{% block body %}
+{% set s=inv_status(c) %}{% set diff=c.total-c.pos-c.cash %}
+<div class="grid g4 kpis mb">
+ <div class="kpi" style="--c:#4f46e5"><span>مبلغ فاکتور</span><b>{{ c.total|m }}</b>{% if c.discount %}<small>تخفیف: {{ c.discount|m }}</small>{% endif %}</div>
+ <div class="kpi" style="--c:#0891b2"><span>دریافتی پوز</span><b>{{ c.pos|m }}</b></div>
+ <div class="kpi" style="--c:#059669"><span>دریافتی نقد</span><b>{{ c.cash|m }}</b></div>
+ <div class="kpi" style="--c:{{ '#059669' if diff==0 else '#dc2626' }}"><span>مانده ({{ s[0] }})</span><b>{{ diff|m }}</b></div>
+</div>
+<div class="bar"><a class="btn" href="/print/invoice/{{ c.id }}">{{ icon('printer') }} چاپ فاکتور</a><a class="btn s" href="/print/invoice/{{ c.id }}?fmt=pdf">PDF</a>
+{% if c.cons_id %}<a class="btn s" href="/amani/{{ c.cons_id }}">امانی {{ c.cons_no }}</a>{% if c.return_no %}<a class="btn s" href="/print/return/{{ c.cons_id }}">مرجوعی {{ c.return_no }}</a>{% endif %}{% endif %}
+<a class="btn s" href="/persons/{{ c.customer_id }}">مشتری: {{ c.cname }}</a>{% if c.visitor_id %}<a class="btn s" href="/persons/{{ c.visitor_id }}">ویزیتور: {{ c.vname }}</a>{% endif %}
+<span class="sp"></span>{% if can('users') %}<a class="btn r" href="/invoices/{{ c.id }}/remove">ابطال / حذف</a>{% endif %}</div>
+<div class="grid g2">
+{% if can("payment") %}<div class="card"><h3>{{ icon('credit-card') }} ثبت دریافتی (هر کارت‌کشیدن یک ردیف)</h3>
+<form method="post" class="f">
+ <div><label>نوع</label><select name="method"><option value="pos">کارت‌خوان (پوز)</option><option value="cash">نقد</option></select></div>
+ <div><label>مبلغ (ریال)</label><input name="amount" type="number" min="1" value="{{ diff if diff>0 else '' }}" required></div>
+ <div><label>شماره پیگیری</label><input name="ref"></div>
+ <div><label>تاریخ</label><input name="date" value="{{ today }}"></div>
+ <div><button class="btn g">ثبت دریافت</button></div></form>
+<p class="note">دریافت چک، واریز بانکی و علی‌الحساب در فاز ۲ (خزانه) اضافه می‌شود.</p></div>{% endif %}
+<div class="card"><h3>دریافتی‌ها</h3><table><tr><th>سند</th><th>تاریخ</th><th>نوع</th><th>پیگیری</th><th>کاربر</th><th class="n">مبلغ</th><th></th></tr>
+{% for p in pays %}<tr><td>{{ p.no }}</td><td>{{ p.date }}</td><td>{{ METHOD[p.method] }}</td><td>{{ p.ref or '' }}</td><td>{{ p.uname or '' }}</td><td class="n">{{ p.amount|m }}</td>
+<td><form method="post" action="/payments/{{ p.id }}/delete" onsubmit="return confirm('حذف شود؟')"><button class="btn sm r">حذف</button></form></td></tr>
+{% else %}<tr><td colspan="7" class="muted">دریافتی ثبت نشده است.</td></tr>{% endfor %}</table></div>
+</div>
+<div class="card"><h3>اقلام فاکتور — تاریخ {{ c.date }} — انبار {{ c.whname }}</h3>
+<table><tr><th>کد</th><th>کالا</th><th>تعداد</th><th class="n">نرخ</th><th class="n">مبلغ</th></tr>
+{% for l in lines %}<tr><td>{{ l.code }}</td><td>{{ l.name }}</td><td>{{ pkr(l.qty, l) }}</td><td class="n">{{ l.price|m }}</td><td class="n">{{ (l.qty*l.price)|m }}</td></tr>{% endfor %}
+<tfoot><tr><td colspan="2">جمع</td><td class="n">{{ c.sold_qty|m }}</td><td></td><td class="n">{{ (c.total + c.discount)|m }}</td></tr></tfoot></table></div>
+{% endblock %}

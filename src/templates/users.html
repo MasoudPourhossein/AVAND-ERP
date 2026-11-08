@@ -1,0 +1,22 @@
+{% extends "base.html" %}{% from "_m.html" import icon %}{% block h %}کاربران و دسترسی‌ها{% endblock %}
+{% block body %}
+<div class="card"><h3>{{ icon('user-cog') }} ایجاد کاربر جدید</h3>
+<form method="post">
+  <div class="f mb">
+    <div><label>نام کاربری</label><input name="username" required dir="ltr" autocomplete="off"></div>
+    <div><label>نام و نام خانوادگی</label><input name="fullname"></div>
+    <div><label>رمز عبور</label><input name="password" type="password" required dir="ltr" autocomplete="new-password"></div>
+  </div>
+  {% with sel=PRESETS['sales'][1], role='sales' %}{% include "_perms.html" %}{% endwith %}
+  <div class="bar" style="margin-top:14px"><span class="sp"></span><button class="btn g">ایجاد کاربر</button></div>
+</form></div>
+<div class="card"><h3>{{ icon('users') }} کاربران</h3>
+<table><tr><th>نام کاربری</th><th>نام</th><th>نقش</th><th>دسترسی‌ها</th><th>وضعیت</th><th>ایجاد</th><th></th></tr>
+{% for u in rows %}<tr><td dir="ltr" style="text-align:right">{{ u.username }}{% if u.id==user.id %} <span class="tag open">شما</span>{% endif %}</td>
+<td>{{ u.fullname or '' }}</td><td>{{ PRESETS[u.role][0] if u.role in PRESETS else u.role }}</td>
+<td style="white-space:normal;min-width:220px">{% for p in perms_of(u) %}<span class="tag open" style="margin:1px">{{ PERMS[p] }}</span>{% endfor %}</td>
+<td>{% if u.active %}<span class="tag ok">فعال</span>{% else %}<span class="tag bad">غیرفعال</span>{% endif %}</td><td>{{ u.created or '' }}</td>
+<td style="display:flex;gap:6px"><a class="btn sm s" href="/users/{{ u.id }}">ویرایش</a>
+{% if u.id != user.id %}<form method="post" action="/users/{{ u.id }}/delete" class="keep-del" onsubmit="return confirm('کاربر «{{ u.username }}» حذف شود؟')"><button class="btn sm r">حذف</button></form>{% endif %}</td></tr>{% endfor %}</table></div>
+{% endblock %}
+{% block js %}<script>function preset(f,ps,k){f.querySelectorAll('input[name=perm]').forEach(c=>c.checked=ps.includes(c.value));f.role.value=k}</script>{% endblock %}

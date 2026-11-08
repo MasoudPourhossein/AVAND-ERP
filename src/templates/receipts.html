@@ -1,0 +1,8 @@
+{% extends "base.html" %}{% from "_m.html" import period %}{% block h %}رسیدهای انبار{% endblock %}
+{% block body %}<div class="card">
+{% if can("receipt") %}<div class="bar no-print"><a class="btn g" href="/receipts/new">+ رسید جدید</a></div>{% endif %}
+{{ period(f,t) }}
+<table><tr><th>شماره رسید</th><th>تاریخ</th><th>انبار</th><th>نوع</th><th>توضیح</th><th class="n">تعداد اقلام</th><th class="n">جمع تعداد</th><th class="n">مبلغ خرید</th><th class="no-print"></th></tr>
+{% for r in rows %}<tr><td>{{ r.no }}</td><td>{{ r.date }}</td><td>{{ r.whname }}</td><td>{{ 'موجودی اولیه' if r.kind=='opening' else 'ورود متفرقه' }}</td><td>{{ r.note or '' }}</td>
+<td class="n">{{ r.n }}</td><td class="n">{{ r.qty|m }}</td><td class="n">{{ r.val|m }}</td><td class="no-print"><a class="btn sm" href="/receipts/{{ r.id }}">مشاهده / چاپ</a></td></tr>
+{% else %}<tr><td colspan="9" class="muted">رسیدی در این بازه نیست.</td></tr>{% endfor %}</table></div>{% endblock %}

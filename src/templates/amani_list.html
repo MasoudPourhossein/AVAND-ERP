@@ -1,0 +1,20 @@
+{% extends "base.html" %}{% from "_m.html" import period, vsel, icon %}{% block h %}فاکتورهای امانی{% endblock %}
+{% block body %}
+{% if last %}<div class="card" style="border-color:#a7f3d0;background:var(--ok-s)">
+<b>امانی {{ last.no }} — {{ last.vname }} تسویه شد.</b>
+<div class="bar" style="margin:8px 0 0">
+{% for i in last_invs %}<a class="btn g sm" href="/invoices/{{ i.id }}">فاکتور {{ i.no }} — {{ i.cname }} — {{ i.total|m }}</a>{% endfor %}
+{% if last.return_no %}<a class="btn s sm" href="/print/return/{{ last.id }}">چاپ مرجوعی {{ last.return_no }}</a>{% endif %}</div></div>{% endif %}
+<div class="card">
+<div class="bar no-print">
+  <a class="btn {{ '' if st=='open' else 's' }}" href="?status=open">امانی باز</a>
+  <a class="btn {{ '' if st=='settled' else 's' }}" href="?status=settled">تسویه شده</a>
+  <a class="btn {{ '' if st=='all' else 's' }}" href="?status=all">همه</a>
+  <span class="sp"></span>{% if can('amani') %}<a class="btn g" href="/amani/new">{{ icon('plus') }} صدور فاکتور امانی</a>{% endif %}</div>
+{% call period(f,t) %}<input type="hidden" name="status" value="{{ st }}">{{ vsel(visitors, vid) }}{% endcall %}
+<table><tr><th>شماره امانی</th><th>تاریخ</th><th>ویزیتور</th><th>انبار</th><th class="n">تعداد</th><th class="n">ارزش امانی</th><th>وضعیت</th><th class="no-print"></th></tr>
+{% for c in rows %}<tr><td>{{ c.no }}</td><td>{{ c.date }}</td><td>{{ c.vname }}</td><td>{{ c.whname }}</td><td class="n">{{ c.qty|m }}</td><td class="n">{{ c.amani_value|m }}</td>
+<td>{% if c.status=='open' %}<span class="tag open">امانی باز</span>{% else %}<span class="tag ok">تسویه {{ c.settle_date }}</span>{% endif %}</td>
+<td class="no-print"><a class="btn sm s" href="/amani/{{ c.id }}">مشاهده</a>
+{% if c.status=='open' and can('settle') %}<a class="btn sm o" href="/amani/{{ c.id }}/settle">تسویه</a>{% endif %}</td></tr>
+{% else %}<tr><td colspan="8" class="muted">سندی نیست.</td></tr>{% endfor %}</table></div>{% endblock %}

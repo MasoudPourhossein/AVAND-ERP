@@ -1,0 +1,75 @@
+{% extends "base.html" %}{% from "_m.html" import icon %}{% block h %}تسویه امانی {{ c.no }} - {{ c.vname }}{% endblock %}
+{% block body %}
+<form method="post" id="sf" autocomplete="off">
+<div class="card">
+  <h3>{{ icon('undo-2') }} ۱. مرجوعی</h3>
+  <p class="muted">مرجوعی هر کالا را به کارتن و/یا باکس وارد کنید؛ مرجوعی به انبار «{{ c.whname }}» برمی‌گردد و باقیمانده فروش است.</p>
+  <div class="f" style="margin-bottom:14px"><div><label>تاریخ امانی</label><input value="{{ c.date }}" disabled></div>
+  <div><label>تاریخ فاکتور قطعی</label><input name="settle_date" value="{{ request.form.settle_date or today }}" required></div></div>
+  <table class="lines"><thead><tr><th>#</th><th>کالا</th><th>تحویلی</th><th style="width:90px">مرجوعی کارتن</th><th style="width:90px">مرجوعی باکس</th><th>فروش</th><th style="width:130px">نرخ واحد (ریال)</th><th class="n">مبلغ (ریال)</th></tr></thead><tbody>
+  {% for l in lines %}<tr data-lid="{{ l.id }}" data-q="{{ l.qty }}" data-k="{{ l.pack or 1 }}" data-u="{{ l.unit }}" data-pu="{{ l.pack_unit }}">
+    <td class="i">{{ loop.index }}</td><td class="wide" data-l="کالا">{{ l.code }} - {{ l.name }}</td><td class="wide" data-l="تحویلی" style="font-size:12px">{{ pkr(l.qty, l) }}</td>
+    <td data-l="مرجوعی کارتن"><input name="retc_{{ l.id }}" class="rc" type="number" min="0" inputmode="numeric" {{ 'disabled' if (l.pack or 1) <= 1 }}></td>
+    <td data-l="مرجوعی باکس"><input name="ret_{{ l.id }}" class="rb" type="number" min="0" inputmode="numeric"></td>
+    <td class="so wide" data-l="فروش" style="font-size:12px"></td>
+    <td data-l="نرخ واحد"><input name="price_{{ l.id }}" class="pr" type="number" min="0" value="{{ l.price }}"></td><td class="n am" data-l="مبلغ"></td></tr>{% endfor %}</tbody>
+  <tfoot><tr><td colspan="5">جمع</td><td class="n" id="ts"></td><td></td><td class="n" id="ta"></td></tr></tfoot></table>
+</div>
+<div class="card">
+  <h3>{{ icon('users') }} ۲. فاکتور به مشتریان ویزیتور <span class="sp"></span><button type="button" class="btn sm g" onclick="addBlk()">{{ icon('plus') }} فاکتور مشتری</button></h3>
+  <p class="muted">فروش را بین مشتریانی که ویزیتور به آن‌ها فروخته تقسیم کنید؛ برای هر مشتری یک فاکتور فروش صادر می‌شود. باقیمانده تخصیص‌نیافته به نام مشتری بخش ۳ فاکتور می‌شود.</p>
+  <div id="blks"></div>
+</div>
+<div class="card">
+  <h3>۳. باقیمانده تخصیص‌نیافته</h3>
+  <div class="f"><div><label>فاکتور باقیمانده به نام</label><select name="rest_cust" id="rest">
+    <option value="{{ c.visitor_id }}">خود ویزیتور ({{ c.vname }})</option>
+    {% for u in custs if u.id != c.visitor_id %}<option value="{{ u.id }}">{{ u.code }} - {{ u.name }}</option>{% endfor %}</select></div></div>
+  <div id="restinfo" class="note"></div>
+</div>
+<div class="bar"><a class="btn s" href="/amani/{{ c.id }}">انصراف</a><span class="sp"></span>
+  <button class="btn g" onclick="return confirm('تسویه و صدور فاکتور(ها) انجام شود؟')">{{ icon('file-check') }} تسویه و صدور فاکتور</button></div>
+</form>
+<template id="bt"><div class="card blk" style="background:var(--soft)">
+  <div class="bar"><b class="bt"></b><div style="flex:1;display:flex;gap:6px;min-width:220px"><select class="cs" style="flex:1"><option value="">انتخاب مشتری...</option>
+    {% for u in custs %}<option value="{{ u.id }}">{{ u.code }} - {{ u.name }}{{ ' ★' if u.visitor_id == c.visitor_id }}</option>{% endfor %}</select>
+    <button type="button" class="btn s sm qa" title="مشتری جدید">{{ icon('plus') }}</button></div>
+    <button type="button" class="btn r sm rm">حذف</button></div>
+  <table class="lines"><thead><tr><th>کالا</th><th>قابل تخصیص</th><th style="width:90px">کارتن</th><th style="width:90px">باکس</th><th class="n">مبلغ</th></tr></thead><tbody>
+  {% for l in lines %}<tr data-lid="{{ l.id }}"><td class="wide" data-l="کالا">{{ l.name }}</td><td class="av wide" data-l="قابل تخصیص" style="font-size:12px"></td>
+    <td data-l="کارتن"><input class="qc" type="number" min="0" inputmode="numeric" {{ 'disabled' if (l.pack or 1) <= 1 }}></td>
+    <td data-l="باکس"><input class="qb" type="number" min="0" inputmode="numeric"></td><td class="n ba" data-l="مبلغ"></td></tr>{% endfor %}
+  </tbody></table></div></template>
+{% endblock %}
+{% block js %}<script>
+const f=n=>Number(n||0).toLocaleString('en-US');
+const pkf=(q,k,u,pu)=>{if(k<=1||!q)return f(q)+' '+u;const c=Math.floor(Math.abs(q)/k),b=Math.abs(q)%k;return (q<0?'-':'')+f(Math.abs(q))+' '+u+' ('+f(c)+' '+pu+(b?' + '+f(b):'')+')'};
+const L={};document.querySelectorAll('#sf > .card:first-child tr[data-lid]').forEach(r=>L[r.dataset.lid]={r,q:+r.dataset.q,k:+r.dataset.k,u:r.dataset.u,pu:r.dataset.pu});
+let bn=0;const BL=document.getElementById('blks');
+function addBlk(){const k=bn++;const t=document.getElementById('bt').content.cloneNode(true),b=t.querySelector('.blk');
+  b.insertAdjacentHTML('afterbegin',`<input type="hidden" name="blk" value="${k}">`);
+  const cs=b.querySelector('.cs');cs.name='cust_'+k;
+  b.querySelectorAll('tr[data-lid]').forEach(r=>{r.querySelector('.qc').name=`q_${k}_${r.dataset.lid}_c`;r.querySelector('.qb').name=`q_${k}_${r.dataset.lid}_b`});
+  b.querySelector('.rm').onclick=()=>{b.remove();calc()};
+  b.querySelector('.qa').onclick=async()=>{const name=prompt('نام مشتری جدید:');if(!name)return;const mobile=prompt('موبایل (اختیاری):')||'';
+    const r=await fetch('/api/persons',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({name,mobile,kind:'customer',visitor_id:{{ c.visitor_id }}})});
+    const d=await r.json();if(d.error){alert(d.error);return}
+    document.querySelectorAll('select.cs, #rest').forEach(s=>s.add(new Option(d.code+' - '+d.name+' ★',d.id)));cs.value=d.id};
+  b.addEventListener('input',calc);BL.appendChild(b);calc();cs.focus()}
+function calc(){let S=0,A=0;const blks=[...BL.querySelectorAll('.blk')];
+  blks.forEach((b,i)=>b.querySelector('.bt').textContent='فاکتور '+(i+1)+':');
+  const rest={};
+  Object.entries(L).forEach(([lid,d])=>{const r=d.r,rc=r.querySelector('.rc'),rb=r.querySelector('.rb'),pr=+r.querySelector('.pr').value||0;
+    const raw=(+rc.value||0)*d.k+(+rb.value||0),ret=Math.min(raw,d.q),sold=d.q-ret;
+    r.querySelector('.so').textContent=pkf(sold,d.k,d.u,d.pu);r.querySelector('.am').textContent=f(sold*pr);S+=sold;A+=sold*pr;
+    rc.style.background=rb.style.background=raw>d.q?'#fee2e2':'';
+    let left=sold;blks.forEach(b=>{const t=b.querySelector(`tr[data-lid="${lid}"]`),qc=t.querySelector('.qc'),qb=t.querySelector('.qb');
+      const n=(+qc.value||0)*d.k+(+qb.value||0);t.querySelector('.av').textContent=pkf(left,d.k,d.u,d.pu);left-=n;
+      t.querySelector('.ba').textContent=f(n*pr);qc.style.background=qb.style.background=left<0?'#fee2e2':''});
+    rest[lid]={left,d}});
+  document.getElementById('ts').textContent=f(S);document.getElementById('ta').textContent=f(A);
+  const parts=Object.values(rest).filter(x=>x.left>0).map(x=>x.d.r.children[1].textContent.split(' - ').slice(1).join(' - ')+': '+pkf(x.left,x.d.k,x.d.u,x.d.pu));
+  const neg=Object.values(rest).some(x=>x.left<0);
+  document.getElementById('restinfo').innerHTML=neg?'<span class="neg">تخصیص بعضی کالاها از فروش بیشتر است.</span>':(parts.length?'باقیمانده: '+parts.join(' • '):'همه فروش به مشتریان تخصیص داده شده است.')}
+document.getElementById('sf').addEventListener('input',calc);calc();
+</script>{% endblock %}

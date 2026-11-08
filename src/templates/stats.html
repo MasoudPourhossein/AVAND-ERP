@@ -1,0 +1,13 @@
+{% extends "report.html" %}{% from "_m.html" import delta %}
+{% block top %}
+<div class="grid g4 kpis mb">
+{% for lab, plab, cur, prev, f1, t1, f0, t0 in spec.cards %}
+  <div class="kpi" style="--c:{{ ['#4f46e5','#0891b2','#7c3aed','#059669'][loop.index0] }}">
+    <span>فروش {{ lab }}</span><b>{{ cur.amount|m }}</b>
+    {{ delta(((cur.amount - prev.amount) * 100.0 / prev.amount) if prev.amount else none) }}
+    <small>{{ plab }}: {{ prev.amount|m }}</small><br>
+    <small>فاکتور: {{ cur.inv }} | تعداد: {{ cur.qty|m }} | دریافتی: {{ cur.coll|m }}</small>
+  </div>
+{% endfor %}
+</div>
+{% endblock %}

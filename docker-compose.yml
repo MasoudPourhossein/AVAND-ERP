@@ -1,0 +1,48 @@
+name: avand
+services:
+  db:
+    image: ${PG_IMAGE:-postgres:15-alpine}
+    container_name: avand-db
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: avand
+      POSTGRES_USER: avand
+      POSTGRES_PASSWORD: ${PG_PASSWORD:?set PG_PASSWORD in .env}
+      TZ: Asia/Tehran
+    volumes:
+      - ${AVAND_HOME:-/var/lib/avand}/pg:/var/lib/postgresql/data
+      - ${AVAND_HOME:-/var/lib/avand}/backups:/backups
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U avand -d avand"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+    shm_size: 256m
+    logging: {driver: json-file, options: {max-size: "10m", max-file: "3"}}
+
+  app:
+    build:
+      context: .
+      args:
+        BASE: ${BASE_IMAGE:-python:3.12-slim-bookworm}
+        PIP_INDEX_URL: ${PIP_INDEX_URL:-https://pypi.org/simple}
+    image: avand-erp:latest
+    container_name: avand-app
+    restart: unless-stopped
+    depends_on:
+      db: {condition: service_healthy}
+    environment:
+      DATABASE_URL: postgresql+psycopg://avand:${PG_PASSWORD}@db:5432/avand
+      AVAND_DATA: /data
+      AVAND_HTTPS: ${AVAND_HTTPS:-1}
+      TZ: Asia/Tehran
+    volumes:
+      - ${AVAND_HOME:-/var/lib/avand}/app:/data
+    ports:
+      - "127.0.0.1:${APP_PORT:-8000}:8000"   # public access via nginx (HTTPS)
+    read_only: true
+    tmpfs: [/tmp]
+    security_opt: ["no-new-privileges:true"]
+    cap_drop: [ALL]
+    mem_limit: 1g
+    logging: {driver: json-file, options: {max-size: "10m", max-file: "3"}}
