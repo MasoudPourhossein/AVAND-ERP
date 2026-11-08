@@ -39,7 +39,12 @@ if [ -f "$OLD_DB" ] && [ ! -f "$H/app/.migrated" ]; then
   systemctl disable --now anbar >/dev/null 2>&1 || true
   cp -f /var/lib/anbar/logo.png "$H/app/logo.png" 2>/dev/null && chown 10001:10001 "$H/app/logo.png" || true
   cp -f "$OLD_DB" "$H/app/anbar-sqlite-backup.db"
-  docker compose run --rm --no-deps -v /var/lib/anbar:/old:ro app python migrate_sqlite.py /old/anbar.db
+  # private writable copy for the container user (sqlite needs to read -wal/-shm and write the journal)
+  rm -rf "$H/app/import"; mkdir -p "$H/app/import"
+  for f in "$OLD_DB" "$OLD_DB-wal" "$OLD_DB-shm"; do [ -f "$f" ] && cp -f "$f" "$H/app/import/"; done
+  chown -R 10001:10001 "$H/app/import" "$H/app/anbar-sqlite-backup.db"
+  docker compose run --rm --no-deps app python migrate_sqlite.py /data/import/anbar.db
+  rm -rf "$H/app/import"
   touch "$H/app/.migrated"
 fi
 
