@@ -12,6 +12,9 @@
   {% if p.is_supplier and can('purchase') %}<a class="btn g" href="/purchases/new?party={{ p.id }}">{{ icon('inbox') }} فاکتور خرید</a>{% endif %}
   {% if can('treasury') %}<a class="btn" href="/treasury/new/recv?person={{ p.id }}">{{ icon('wallet') }} دریافت از شخص</a><a class="btn o" href="/treasury/new/pay?person={{ p.id }}">{{ icon('wallet') }} پرداخت به شخص</a>{% endif %}
   {% if can('rep_fin') %}<a class="btn s" href="/reports/fin/statement?person={{ p.id }}">{{ icon('book-open') }} صورت‌حساب</a>
+  {% if p.is_customer %}<a class="btn s" href="/reports/fin/due?as=customer&person={{ p.id }}">{{ icon('calendar') }} صورت‌حساب سررسیدی</a>{% endif %}
+  {% if p.is_visitor %}<a class="btn s" href="/reports/fin/due?as=visitor&person={{ p.id }}">{{ icon('calendar') }} سررسید مشتریان ویزیتور</a>{% endif %}
+  {% if p.is_supplier %}<a class="btn s" href="/reports/fin/due?as=supplier&person={{ p.id }}">{{ icon('calendar') }} سررسید بدهی</a>{% endif %}
   {% if p.is_visitor %}<a class="btn s" href="/reports/fin/statement?person={{ p.id }}&as=visitor">{{ icon('book-open') }} صورت‌حساب ویزیتور (همه مشتریان)</a>{% endif %}{% endif %}
 </div>
 {% if can('persons') %}<details class="card no-print"><summary style="cursor:pointer;font-weight:700">ویرایش اطلاعات</summary>

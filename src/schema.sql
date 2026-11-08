@@ -200,3 +200,6 @@ FROM tr_lines l JOIN tr_docs d ON d.id=l.doc_id LEFT JOIN cheques c ON c.id=l.ch
 DROP VIEW IF EXISTS v_gl;
 CREATE VIEW v_gl AS SELECT vl.*, v.date, v.no AS vno, v.kind AS vkind, v.src_type, v.src_id, v.descr AS vdescr, a.code AS acode, a.name AS aname
 FROM voucher_lines vl JOIN vouchers v ON v.id=vl.voucher_id JOIN accounts a ON a.id=vl.account_id;
+
+-- v4: payment term per person (days after invoice date when the invoice has no due date)
+ALTER TABLE persons ADD COLUMN IF NOT EXISTS credit_days INT NOT NULL DEFAULT 0;

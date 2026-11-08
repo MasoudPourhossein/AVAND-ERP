@@ -6,7 +6,7 @@
 <table><tr><th>فایل</th><th>نوع</th><th>زمان</th><th class="n">حجم (KB)</th><th></th></tr>
 {% for f in files %}<tr><td dir="ltr" style="text-align:right">{{ f.name }}</td>
 <td>{{ 'خودکار روزانه' if f.src=='auto' else ('قبل از بازیابی' if f.name.startswith('pre-restore') else ('آپلود شده' if f.name.startswith('uploaded') else 'دستی')) }}</td>
-<td dir="ltr" style="text-align:right">{{ f.mtime.strftime('%Y-%m-%d %H:%M') }}</td><td class="n">{{ (f.size/1024)|round|int }}</td>
+<td dir="ltr" style="text-align:right">{{ f.when }}</td><td class="n">{{ (f.size/1024)|round|int }}</td>
 <td style="white-space:nowrap"><a class="btn sm s" href="/backups/{{ f.src }}/{{ f.name }}">دانلود</a>
   <button type="button" class="btn sm o" onclick="pick('{{ f.src }}','{{ f.name }}')">بازیابی</button>
   {% if f.src=='manual' %}<form method="post" action="/backups/{{ f.name }}/delete" style="display:inline" onsubmit="return confirm('فایل حذف شود؟')"><button class="btn sm r">حذف</button></form>{% endif %}</td></tr>

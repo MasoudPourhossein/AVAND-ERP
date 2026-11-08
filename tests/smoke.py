@@ -250,6 +250,31 @@ snap = lambda: one("SELECT string_agg(account_id||':'||COALESCE(person_id,0)||':
 s0 = snap(); P("/vouchers/repost", {}); assert snap() == s0; gl_ok()
 assert one(f"SELECT COUNT(*) FROM vouchers WHERE id={mv}") == 1
 print("V3 OK")
+# ================= due-date statements & more reports
+import reports2  # noqa: E402
+with eng.begin() as c_:
+    c_.execute(text(f"UPDATE persons SET credit_days=10 WHERE id={c2}"))
+P("/sales/new", {"date": "1405/08/20", "wh_id": w1, "party_id": c1, "visitor_id": vis, "item_id": [k2], "ctn": [0], "box": [2], "price": [30],
+                 "due_date": "1405/09/15", "discount": 0})
+with A.app.test_request_context():
+    A.app.preprocess_request
+    from flask import g as g_
+    its = reports2.open_items("recv", "1405/12/29")
+    pos = one(f"SELECT COALESCE(SUM(b),0) FROM (SELECT SUM(vl.debit-vl.credit) b FROM voucher_lines vl JOIN accounts a ON a.id=vl.account_id WHERE a.sys_key='receivable' GROUP BY vl.person_id HAVING SUM(vl.debit-vl.credit)>0) z")
+    assert sum(r["open"] for r in its) == pos, (sum(r["open"] for r in its), pos)
+    assert any(r["due"] == "1405/09/15" for r in its if r["person"] == c1)
+    assert all(r["due"] == reports2.add_days(r["date"], 10) for r in its if r["person"] == c2 and r["doc_id"])
+    pits = reports2.open_items("pay", "1405/12/29")
+    assert sum(r["open"] for r in pits) == accbal("payable", person_id=sup) * -1
+for u in ["/reports/fin/due", f"/reports/fin/due?as=customer&person={c1}", f"/reports/fin/due?as=visitor&person={vis}", "/reports/fin/due?as=supplier",
+          f"/reports/fin/due?as=supplier&person={sup}", "/reports/fin/due?to=1405/08/10", "/reports/fin/cashflow", "/reports/fin/cashflow?days=365",
+          "/reports/fin/debtors", "/reports/fin/debtors?side=all", "/reports/monthly?year=1405", "/reports/monthly?year=1405&by=item&val=qty",
+          "/reports/monthly?year=1405&by=group", "/reports/monthly?year=1405&by=customer", "/reports/idle", "/reports/fin/vat?from=1405/07/01&to=1405/12/29"]:
+    G(u)
+assert "1405/09/15" in T(G(f"/reports/fin/due?as=customer&person={c1}&to=1405/09/01"))
+for u in ["/reports/fin/due?fmt=xlsx", "/reports/fin/cashflow?fmt=pdf", "/reports/monthly?year=1405&fmt=xlsx", "/reports/fin/vat?fmt=xlsx"]:
+    assert cl.get(u).status_code == 200, u
+print("V4 OK")
 # ================= deletion of base data
 assert "استفاده شده" in T(P(f"/delete/person/{c1}", {})) and one(f"SELECT COUNT(*) FROM persons WHERE id={c1}") == 1
 assert "استفاده شده" in T(P(f"/delete/item/{k1}", {}))

@@ -3,6 +3,7 @@ import os, re, datetime, subprocess
 from flask import render_template, request, redirect, url_for, flash, send_file, abort, session
 from werkzeug.security import check_password_hash
 from core import app, q, BACKUP_DIR, init_db
+from jalali import from_date
 import dbl
 
 AUTO_DIR = "/auto-backups"          # daily cron dumps of the db container (mounted read-only)
@@ -43,7 +44,8 @@ def _files():
             p = os.path.join(d, n)
             if NAME_RE.match(n) and os.path.isfile(p) and os.access(p, os.R_OK):
                 st = os.stat(p)
-                out.append({"src": src, "name": n, "size": st.st_size, "mtime": datetime.datetime.fromtimestamp(st.st_mtime)})
+                m = datetime.datetime.fromtimestamp(st.st_mtime)
+                out.append({"src": src, "name": n, "size": st.st_size, "mtime": m, "when": f"{from_date(m.date())} {m:%H:%M}"})
     return sorted(out, key=lambda f: f["mtime"], reverse=True)
 
 

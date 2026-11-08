@@ -371,7 +371,7 @@ def _person_form(pid=None):
                 phone=f.get("phone", "").strip() or None, mobile=f.get("mobile", "").strip() or None,
                 address=f.get("address", "").strip() or None, national_id=f.get("national_id", "").strip() or None,
                 economic_code=f.get("economic_code", "").strip() or None, note=f.get("note", "").strip() or None,
-                credit_limit=max(to_int(f.get("credit_limit")), 0), active=1 if f.get("active", "1") else 0,
+                credit_limit=max(to_int(f.get("credit_limit")), 0), credit_days=max(to_int(f.get("credit_days")), 0), active=1 if f.get("active", "1") else 0,
                 ptype="legal" if f.get("ptype") == "legal" else "real", reg_no=f.get("reg_no", "").strip() or None,
                 postal_code=f.get("postal_code", "").strip() or None)
 
