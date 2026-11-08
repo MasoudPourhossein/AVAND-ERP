@@ -1,11 +1,17 @@
 {% extends "base.html" %}{% from "_m.html" import icon %}{% block h %}تنظیمات{% endblock %}
 {% block body %}
-<form method="post" enctype="multipart/form-data" class="card" style="max-width:720px">
+<form method="post" enctype="multipart/form-data" class="card" style="max-width:860px">
   <h3>{{ icon('shield-check') }} عنوان و لوگو</h3>
   <div class="f mb">
     <div style="grid-column:1/-1"><label>عنوان برنامه / نام شرکت (در منو، فاکتورها و گزارش‌ها)</label><input name="title" value="{{ title }}" maxlength="80" required></div>
     <div style="grid-column:1/-1"><label>لوگو (PNG / JPG / WEBP)</label><input type="file" name="logo" accept="image/png,image/jpeg,image/webp"></div>
   </div>
+  <h3>مشخصات فروشنده (روی فاکتور رسمی)</h3>
+  <div class="f mb">{% for k, lab in keys %}<div {% if k=='s_address' %}style="grid-column:1/-1"{% endif %}><label>{{ lab }}</label><input name="{{ k }}" value="{{ si[k] }}" {{ 'dir=ltr' if k!='s_address' }}></div>{% endfor %}</div>
+  <h3>مالیات و عوارض ارزش افزوده</h3>
+  <div class="f mb"><div><label style="display:flex;gap:8px;align-items:center;color:var(--txt);font-size:14px"><input type="checkbox" name="vat_on" value="1" {{ 'checked' if vat_on }} style="width:auto"> محاسبه مالیات در فاکتورها فعال است</label></div>
+  <div><label>نرخ پیش‌فرض (%)</label><input name="vat_rate" value="{{ vat_rate }}" inputmode="decimal"></div></div>
+  <p class="note">نرخ هر کالا را می‌توان در صفحه کالا جدا تعیین کرد (مثلا ۰ برای کالای معاف). نرخ روی هر ردیف فاکتور هم قابل تغییر است.</p>
   <div class="bar">
     <div class="brandbox" style="border:1px dashed var(--line);border-radius:12px;padding:12px 18px">
       {% if HAS_LOGO %}<img src="{{ url_for('logo', v=LOGO_V) }}" alt="logo">{% else %}<span class="muted">بدون لوگو</span>{% endif %}<span class="pw">{{ POWERED }}</span></div>

@@ -6,6 +6,9 @@
   <div><label>ویزیتور مسئول (برای مشتری)</label><select name="visitor_id"><option value="">—</option>
     {% for v in visitors %}<option value="{{ v.id }}" {{ 'selected' if p and v.id==p.visitor_id }}>{{ v.code }} - {{ v.name }}</option>{% endfor %}</select></div>
   <div><label>کد ملی / شناسه ملی</label><input name="national_id" value="{{ p.national_id or '' if p else '' }}" dir="ltr"></div>
+  <div><label>نوع شخص</label><select name="ptype"><option value="real">حقیقی</option><option value="legal" {{ 'selected' if p and p.ptype=='legal' }}>حقوقی</option></select></div>
+  <div><label>شماره ثبت</label><input name="reg_no" value="{{ p.reg_no or '' if p else '' }}" dir="ltr"></div>
+  <div><label>کد پستی</label><input name="postal_code" value="{{ p.postal_code or '' if p else '' }}" dir="ltr"></div>
   <div><label>کد اقتصادی</label><input name="economic_code" value="{{ p.economic_code or '' if p else '' }}" dir="ltr"></div>
   <div><label>سقف اعتبار (ریال)</label><input name="credit_limit" type="number" min="0" value="{{ p.credit_limit if p else 0 }}"></div>
   <div style="grid-column:1/-1"><label>آدرس</label><input name="address" value="{{ p.address or '' if p else '' }}"></div>

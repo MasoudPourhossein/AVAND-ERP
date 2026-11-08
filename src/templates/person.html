@@ -7,7 +7,7 @@
   {% if p.is_supplier %}<div class="kpi" style="--c:#0891b2"><span>جمع خرید خالص از تامین‌کننده</span><b>{{ st.purchased|m }}</b></div>{% endif %}
 </div>
 <div class="bar no-print">
-  {% if p.is_visitor and can('amani') %}<a class="btn g" href="/amani/new?party={{ p.id }}">{{ icon('send') }} صدور امانی</a>{% endif %}
+  {% if (p.is_visitor or p.is_customer) and can('amani') %}<a class="btn g" href="/amani/new?party={{ p.id }}">{{ icon('send') }} صدور امانی</a>{% endif %}
   {% if p.is_customer and can('sale') %}<a class="btn g" href="/sales/new?party={{ p.id }}">{{ icon('receipt') }} فاکتور فروش</a>{% endif %}
   {% if p.is_supplier and can('purchase') %}<a class="btn g" href="/purchases/new?party={{ p.id }}">{{ icon('inbox') }} فاکتور خرید</a>{% endif %}
   {% if can('rep_fin') %}{% if p.is_customer %}<a class="btn s" href="/reports/fin/statement?person={{ p.id }}&as=customer">{{ icon('book-open') }} صورت‌حساب مشتری</a>{% endif %}

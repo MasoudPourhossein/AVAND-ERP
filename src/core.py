@@ -53,7 +53,8 @@ def db():
 
 
 DOC = {"RES": "رسید انبار", "PUR": "فاکتور خرید", "PRT": "برگشت از خرید", "TRF": "حواله بین انبار", "AMN": "فاکتور امانی",
-       "FCT": "فاکتور فروش", "MRJ": "برگه مرجوعی", "DRY": "سند دریافت"}
+       "FCT": "فاکتور فروش", "SRT": "برگشت از فروش", "MRJ": "برگه مرجوعی", "DRY": "سند دریافت"}
+PAY_TERMS = ["نقدی", "نسیه", "چک", "کارت‌خوان", "اقساطی", "نقد و نسیه"]
 METHOD = {"pos": "کارت‌خوان (پوز)", "cash": "نقد"}
 PERSON_KINDS = {"customer": "مشتری", "supplier": "تامین‌کننده", "visitor": "ویزیتور", "employee": "کارمند", "other": "سایر"}
 
@@ -72,7 +73,7 @@ PERMS = {
     "rep_stock": "گزارش‌های انبار",
     "rep_sales": "گزارش‌ها و آمار فروش",
     "rep_fin": "گزارش‌های مالی",
-    "void": "حذف و ابطال اسناد",
+    "void": "ویرایش، حذف و ابطال اسناد",
     "users": "مدیریت کاربران، تنظیمات و پشتیبان",
 }
 PRESETS = {
@@ -105,7 +106,8 @@ ACCESS = {
     "amani_new": (["amani"], ["amani"]), "amani_settle": (["settle"], ["settle"]),
     "amani_delete": (["void"], ["void"]), "print_amani": (["amani", "settle", "rep_sales"], []),
     "print_return": (["settle", "rep_sales", "rep_stock"], []),
-    "sale_new": (["sale"], ["sale"]),
+    "sale_new": (["sale"], ["sale"]), "sale_return_new": (["sale"], ["sale"]), "sale_edit": (["void"], ["void"]),
+    "purchase_edit": (["void"], ["void"]),
     "invoices": (["payment", "settle", "sale", "rep_sales", "rep_fin"], []),
     "invoice": (["payment", "settle", "sale", "rep_sales", "rep_fin"], ["payment"]),
     "print_invoice": (["payment", "settle", "sale", "rep_sales", "rep_fin"], []),
@@ -312,13 +314,12 @@ def check_stock(needs, wh_id):
 
 INV_SQL = """
  SELECT s.*, s.no AS final_no, s.date AS settle_date, cu.name cname, cu.code ccode, v.name vname, v.code vcode, w.name whname,
-  COALESCE((SELECT SUM(qty*price) FROM sales_lines WHERE inv_id=s.id),0) - s.discount AS total,
-  COALESCE((SELECT SUM(qty) FROM sales_lines WHERE inv_id=s.id),0) AS sold_qty,
+  s.qty_total AS sold_qty,
   COALESCE((SELECT SUM(amount) FROM payments WHERE inv_id=s.id AND method='pos'),0) AS pos,
   COALESCE((SELECT SUM(amount) FROM payments WHERE inv_id=s.id AND method='cash'),0) AS cash,
-  c.no AS cons_no, c.return_no
- FROM sales_invoices s JOIN persons cu ON cu.id=s.customer_id LEFT JOIN persons v ON v.id=s.visitor_id
- JOIN warehouses w ON w.id=s.wh_id LEFT JOIN consignments c ON c.id=s.cons_id
+  c.no AS cons_no, c.return_no, r.no AS ret_of_no
+ FROM v_si s JOIN persons cu ON cu.id=s.customer_id LEFT JOIN persons v ON v.id=s.visitor_id
+ JOIN warehouses w ON w.id=s.wh_id LEFT JOIN consignments c ON c.id=s.cons_id LEFT JOIN sales_invoices r ON r.id=s.ret_of
 """
 CONS_SQL = """
  SELECT c.*, v.name vname, v.code vcode, w.name whname,
@@ -330,7 +331,65 @@ CONS_SQL = """
  FROM consignments c JOIN persons v ON v.id=c.visitor_id JOIN warehouses w ON w.id=c.wh_id
 """
 # receivable balance helpers: invoice total minus payments
-INV_TOTAL = "(COALESCE((SELECT SUM(qty*price) FROM sales_lines WHERE inv_id=s.id),0)-s.discount)"
+# signed receivable effect of each sales doc (returns negative)
+CUST_BAL = """(COALESCE((SELECT SUM(total*sg) FROM v_si s WHERE s.customer_id={p}),0)
+ - COALESCE((SELECT SUM(pa.amount) FROM payments pa JOIN sales_invoices s ON s.id=pa.inv_id WHERE s.customer_id={p}),0))"""
+SUP_BAL = "COALESCE((SELECT SUM(total*sg) FROM v_pu u WHERE u.supplier_id={p}),0)"
+
+
+def vat_default():
+    return float(setting("vat_rate", "10") or 0) if setting("vat_on", "0") == "1" else 0.0
+
+
+def vat_of(item_vat_rate):
+    """effective VAT % for an item row value (None = company default)"""
+    if setting("vat_on", "0") != "1":
+        return 0.0
+    return float(item_vat_rate) if item_vat_rate is not None else vat_default()
+
+
+SELLER_KEYS = [("s_economic", "کد اقتصادی"), ("s_national", "شناسه ملی"), ("s_reg", "شماره ثبت"), ("s_postal", "کد پستی"),
+               ("s_phone", "تلفن"), ("s_address", "نشانی")]
+
+
+def seller_info():
+    return {k: setting(k, "") for k, _ in SELLER_KEYS}
+
+
+_ONES = ["", "یک", "دو", "سه", "چهار", "پنج", "شش", "هفت", "هشت", "نه"]
+_TEENS = ["ده", "یازده", "دوازده", "سیزده", "چهارده", "پانزده", "شانزده", "هفده", "هجده", "نوزده"]
+_TENS = ["", "", "بیست", "سی", "چهل", "پنجاه", "شصت", "هفتاد", "هشتاد", "نود"]
+_HUND = ["", "یکصد", "دویست", "سیصد", "چهارصد", "پانصد", "ششصد", "هفتصد", "هشتصد", "نهصد"]
+_SCALE = ["", "هزار", "میلیون", "میلیارد", "هزار میلیارد", "میلیون میلیارد"]
+
+
+def _three(n):
+    h, r = divmod(n, 100)
+    parts = [_HUND[h]] if h else []
+    if 10 <= r < 20:
+        parts.append(_TEENS[r - 10])
+    else:
+        t, o = divmod(r, 10)
+        if t:
+            parts.append(_TENS[t])
+        if o:
+            parts.append(_ONES[o])
+    return " و ".join(parts)
+
+
+def num_words(n):
+    """Persian words for an integer: 1250000 -> یک میلیون و دویست و پنجاه هزار"""
+    n = int(round(n or 0))
+    if n == 0:
+        return "صفر"
+    neg, n = n < 0, abs(n)
+    groups, i = [], 0
+    while n:
+        n, g = divmod(n, 1000)
+        if g:
+            groups.append(f"{_three(g)} {_SCALE[i]}".strip())
+        i += 1
+    return ("منفی " if neg else "") + " و ".join(reversed(groups))
 
 
 def inv_paid(inv_id):
@@ -338,6 +397,8 @@ def inv_paid(inv_id):
 
 
 def inv_status(r):
+    if r.get("kind") == "return":
+        return "برگشت از فروش", "warn"
     diff = r["total"] - r["pos"] - r["cash"]
     if diff == 0:
         return "تسویه کامل", "ok"
@@ -398,7 +459,7 @@ def safe_back(u, default):
 def inject():
     u = g.get("user")
     return {"today": today_j(), "DOC": DOC, "METHOD": METHOD, "PERSON_KINDS": PERSON_KINDS, "inv_status": inv_status, "user": u,
-            "PERMS": PERMS, "PRESETS": PRESETS, "can": can, "COMPANY": company(), "HAS_LOGO": bool(logo_file()),
+            "PERMS": PERMS, "PRESETS": PRESETS, "PAY_TERMS": PAY_TERMS, "num_words": num_words, "can": can, "COMPANY": company(), "HAS_LOGO": bool(logo_file()),
             "LOGO_V": int(os.path.getmtime(LOGO_PATH)) if logo_file() else 0, "POWERED": POWERED, "xurl": xurl}
 
 

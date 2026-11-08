@@ -2,12 +2,19 @@
 from flask import render_template, request, redirect, url_for, flash, abort, session
 from core import (app, q, x, v1, db, next_no, to_int, uid, uname, price_at, buy_at, add_moves, del_moves, check_stock, default_wh,
                   INV_SQL, CONS_SQL, inv_paid, period, money, pkr, DOC, METHOD, can)
-from inventory import parse_lines, form_ctx, doc_out, wh_valid, item_lines
+from inventory import parse_lines, form_ctx, doc_out, wh_valid, item_lines, line_vat, doc_init_lines, _no_negative, _can_remove_moves
+from core import vat_of
 from jalali import today_j, norm_date
 
 
 def _visitors():
     return q("SELECT id, code, name, visitor_id FROM persons WHERE is_visitor=1 AND active=1 ORDER BY code")
+
+
+def _holders():
+    """who can receive consignment: visitors and customers"""
+    return q("""SELECT id, code, name || CASE WHEN is_visitor=1 THEN ' — ویزیتور' ELSE ' — مشتری' END AS name, visitor_id
+                FROM persons WHERE (is_visitor=1 OR is_customer=1) AND active=1 ORDER BY is_visitor DESC, code""")
 
 
 def _customers():
@@ -22,15 +29,36 @@ def sale_lines(iid):
     return item_lines("sales_lines", "inv_id", iid)
 
 
-def create_invoice(kind, date, customer, visitor, wh, lines, discount=0, note=None, cons_id=None):
-    """lines: (item_id, qty, price). Direct invoices move stock out; consignment invoices don't (already issued)."""
-    no = next_no("FCT")
-    iid = x("""INSERT INTO sales_invoices(no,kind,date,customer_id,visitor_id,wh_id,cons_id,discount,note,created_by)
-               VALUES(?,?,?,?,?,?,?,?,?,?)""", (no, kind, date, customer, visitor, wh, cons_id, discount, note, uid()))
-    for i, qt, p in lines:
-        x("INSERT INTO sales_lines(inv_id,item_id,qty,price,cost) VALUES(?,?,?,?,?)", (iid, i, qt, p, buy_at(i, date) or 0))
+def create_invoice(kind, date, customer, visitor, wh, lines, discount=0, note=None, cons_id=None, extra=None, iid=None):
+    """lines: (item_id, qty, price[, disc, vat_rate]). direct -> stock out (FCT); return -> stock in (SRT); consign -> no move.
+    iid given = replace an existing invoice's header and lines (number kept)."""
+    ex = extra or {}
+    full = []
+    for ln in lines:
+        if len(ln) == 3:
+            i, qt, p = ln
+            r = q("SELECT vat_rate FROM items WHERE id=?", (i,), one=True)
+            ln = (i, qt, p, 0, vat_of(r["vat_rate"] if r else None))
+        full.append(ln)
+    hdr = (kind, date, customer, visitor, wh, cons_id, discount, note, ex.get("due_date"), ex.get("pay_terms"), ex.get("ref_no"), ex.get("ret_of"))
+    if iid:
+        no = v1("SELECT no FROM sales_invoices WHERE id=?", (iid,))
+        for t in ("FCT", "SRT"):
+            del_moves(t, iid)
+        x("DELETE FROM sales_lines WHERE inv_id=?", (iid,))
+        x("""UPDATE sales_invoices SET kind=?, date=?, customer_id=?, visitor_id=?, wh_id=?, cons_id=?, discount=?, note=?, due_date=?,
+             pay_terms=?, ref_no=?, ret_of=?, updated_by=? WHERE id=?""", hdr + (uid(), iid))
+    else:
+        no = next_no("FCT")
+        iid = x("""INSERT INTO sales_invoices(no,kind,date,customer_id,visitor_id,wh_id,cons_id,discount,note,due_date,pay_terms,ref_no,ret_of,created_by)
+                   VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?)""", (no,) + hdr + (uid(),))
+    for i, qt, p, d, vr in full:
+        x("INSERT INTO sales_lines(inv_id,item_id,qty,price,disc,vat_rate,vat,cost) VALUES(?,?,?,?,?,?,?,?)",
+          (iid, i, qt, p, d, vr, line_vat(qt, p, d, vr), buy_at(i, date) or 0))
     if kind == "direct":
-        add_moves("FCT", iid, no, date, [(i, wh, -qt, 0) for i, qt, _ in lines])
+        add_moves("FCT", iid, no, date, [(i, wh, -qt, 0) for i, qt, *_ in full])
+    elif kind == "return":
+        add_moves("SRT", iid, no, date, [(i, wh, qt, buy_at(i, date) or 0) for i, qt, *_ in full])
     return no, iid
 
 
@@ -56,7 +84,7 @@ def amani_list():
 
 @app.route("/amani/new", methods=["GET", "POST"])
 def amani_new():
-    vs = _visitors()
+    vs = _holders()
     if request.method == "POST":
         try:
             date, wh = norm_date(request.form.get("date")), to_int(request.form.get("wh_id"))
@@ -65,8 +93,8 @@ def amani_new():
                 raise ValueError("تاریخ نامعتبر است.")
             if not wh_valid(wh):
                 raise ValueError("انبار نامعتبر است.")
-            if not q("SELECT 1 FROM persons WHERE id=? AND is_visitor=1", (vid,), one=True):
-                raise ValueError("ویزیتور را انتخاب کنید.")
+            if not q("SELECT 1 FROM persons WHERE id=? AND (is_visitor=1 OR is_customer=1)", (vid,), one=True):
+                raise ValueError("ویزیتور یا مشتری تحویل‌گیرنده را انتخاب کنید.")
             lines = parse_lines()
             check_stock({i: qt for i, qt, _ in lines}, wh)
             no = next_no("AMN")
@@ -88,7 +116,7 @@ def _amani_doc(cid):
     c = q(CONS_SQL + " WHERE c.id=?", (cid,), one=True) or abort(404)
     lines = cons_lines(cid)
     invs = q(INV_SQL + " WHERE s.cons_id=? ORDER BY s.no", (cid,))
-    doc = {"title": DOC["AMN"], "no": c["no"], "date": c["date"], "party": f"{c['vname']} ({c['vcode']})", "note": c["note"],
+    doc = {"title": DOC["AMN"], "no": c["no"], "date": c["date"], "party": f"{c['vname']} ({c['vcode']})", "note": c["note"], "party_label": "تحویل‌گیرنده",
            "status": "امانی باز" if c["status"] == "open" else "تسویه شد" + (f" — فاکتورها: {'، '.join(str(i['no']) for i in invs)}" if invs else ""),
            "extra": f"انبار: {c['whname']}",
            "cols": ["کد کالا", "نام کالا", "تعداد تحویلی", "نرخ واحد (ریال)", "ارزش (ریال)"],
@@ -129,8 +157,10 @@ def amani_settle(cid):
     if c["status"] != "open":
         return redirect(url_for("amani_view", cid=cid))
     lines = cons_lines(cid)
+    holder = q("SELECT * FROM persons WHERE id=?", (c["visitor_id"],), one=True)
+    inv_visitor = c["visitor_id"] if holder["is_visitor"] else holder["visitor_id"]
     custs = q("""SELECT id, code, name, visitor_id FROM persons WHERE is_customer=1 AND active=1
-                 ORDER BY (visitor_id=?) DESC, code""", (c["visitor_id"],))
+                 ORDER BY (id=?) DESC, (visitor_id=?) DESC, code""", (c["visitor_id"], c["visitor_id"]))
     if request.method == "POST":
         f = request.form
         try:
@@ -184,7 +214,7 @@ def amani_settle(cid):
                     m[i] = (m.get(i, (0, p))[0] + qt, p)
             nos = []
             for cust, m in merged.items():
-                no, _ = create_invoice("consign", date, cust, c["visitor_id"], c["wh_id"], [(i, qp[0], qp[1]) for i, qp in m.items()],
+                no, _ = create_invoice("consign", date, cust, inv_visitor, c["wh_id"], [(i, qp[0], qp[1]) for i, qp in m.items()],
                                        note=f"عطف به امانی {c['no']}", cons_id=cid)
                 nos.append(no)
             rno = next_no("MRJ") if any(d["ret"] for d in L.values()) else None
@@ -204,7 +234,7 @@ def amani_settle(cid):
         except ValueError as e:
             db().rollback()
             flash(str(e), "bad")
-    return render_template("settle.html", c=c, lines=lines, custs=custs)
+    return render_template("settle.html", c=c, lines=lines, custs=custs, holder=holder)
 
 
 @app.route("/print/return/<int:cid>")
@@ -221,34 +251,94 @@ def print_return(cid):
     return doc_out(doc, printing=True, pdf_url=url_for("print_return", cid=cid, fmt="pdf"))
 
 
-# ================= direct sales =================
+# ================= direct sales / returns =================
+def _save_sale(kind, iid=None):
+    date, wh = norm_date(request.form.get("date")), to_int(request.form.get("wh_id"))
+    cust, vis = to_int(request.form.get("party_id")), to_int(request.form.get("visitor_id")) or None
+    if not date:
+        raise ValueError("تاریخ نامعتبر است.")
+    if not wh_valid(wh):
+        raise ValueError("انبار نامعتبر است.")
+    if not q("SELECT 1 FROM persons WHERE id=? AND is_customer=1", (cust,), one=True):
+        raise ValueError("مشتری را انتخاب کنید.")
+    if vis and not q("SELECT 1 FROM persons WHERE id=? AND is_visitor=1", (vis,), one=True):
+        raise ValueError("ویزیتور نامعتبر است.")
+    lines = parse_lines(True, full=True)
+    disc = max(to_int(request.form.get("discount")), 0)
+    if disc > sum(qt * p - d for _, qt, p, d, _v in lines):
+        raise ValueError("تخفیف از جمع فاکتور بیشتر است.")
+    ret_of = None
+    if kind == "return" and request.form.get("ret_of_no", "").strip():
+        ret_of = v1("SELECT id FROM sales_invoices WHERE no=? AND kind<>'return'", (to_int(request.form.get("ret_of_no")),)) or None
+        if not ret_of:
+            raise ValueError("فاکتور مرجع با این شماره پیدا نشد.")
+    extra = {"due_date": norm_date(request.form.get("due_date")), "pay_terms": request.form.get("pay_terms") or None,
+             "ref_no": request.form.get("ref_no", "").strip() or None, "ret_of": ret_of}
+    if kind == "direct" and not iid:
+        check_stock({i: qt for i, qt, *_ in lines}, wh)
+    no, iid = create_invoice(kind, date, cust, vis, wh, lines, disc, request.form.get("note"), extra=extra, iid=iid)
+    if not _no_negative("FCT" if kind == "direct" else "SRT", iid):
+        raise ValueError("موجودی بعضی کالاها در این انبار کافی نیست.")
+    return no, iid
+
+
+def _sale_form(mode, **kw):
+    return render_template("doc_form.html", **form_ctx(mode, parties=_customers(), visitors=_visitors(), **kw))
+
+
 @app.route("/sales/new", methods=["GET", "POST"])
 def sale_new():
     if request.method == "POST":
         try:
-            date, wh = norm_date(request.form.get("date")), to_int(request.form.get("wh_id"))
-            cust, vis = to_int(request.form.get("party_id")), to_int(request.form.get("visitor_id")) or None
-            if not date:
-                raise ValueError("تاریخ نامعتبر است.")
-            if not wh_valid(wh):
-                raise ValueError("انبار نامعتبر است.")
-            if not q("SELECT 1 FROM persons WHERE id=? AND is_customer=1", (cust,), one=True):
-                raise ValueError("مشتری را انتخاب کنید.")
-            if vis and not q("SELECT 1 FROM persons WHERE id=? AND is_visitor=1", (vis,), one=True):
-                raise ValueError("ویزیتور نامعتبر است.")
-            lines = parse_lines(True)
-            disc = max(to_int(request.form.get("discount")), 0)
-            if disc > sum(qt * p for _, qt, p in lines):
-                raise ValueError("تخفیف از جمع فاکتور بیشتر است.")
-            check_stock({i: qt for i, qt, _ in lines}, wh)
-            no, iid = create_invoice("direct", date, cust, vis, wh, lines, disc, request.form.get("note"))
+            no, iid = _save_sale("direct")
             db().commit()
             flash(f"فاکتور فروش شماره {no} صادر شد.", "ok")
             return redirect(url_for("invoice", iid=iid))
         except ValueError as e:
             db().rollback()
             flash(str(e), "bad")
-    return render_template("doc_form.html", **form_ctx("sale", parties=_customers(), visitors=_visitors()))
+    return _sale_form("sale")
+
+
+@app.route("/sales/return/new", methods=["GET", "POST"])
+def sale_return_new():
+    if request.method == "POST":
+        try:
+            no, iid = _save_sale("return")
+            db().commit()
+            flash(f"برگشت از فروش شماره {no} ثبت شد و کالا به انبار برگشت.", "ok")
+            return redirect(url_for("invoice", iid=iid))
+        except ValueError as e:
+            db().rollback()
+            flash(str(e), "bad")
+    src = None
+    if request.args.get("of"):
+        src = q("SELECT * FROM sales_invoices WHERE id=?", (to_int(request.args.get("of")),), one=True)
+    return _sale_form("sale_return", doc={"customer_id": src["customer_id"], "visitor_id": src["visitor_id"], "wh_id": src["wh_id"],
+                                           "ret_of_no": src["no"]} if src else None,
+                      init_lines=doc_init_lines("sales_lines", "inv_id", src["id"]) if src else ())
+
+
+@app.route("/sales/<int:iid>/edit", methods=["GET", "POST"])
+def sale_edit(iid):
+    s = q("SELECT s.*, r.no ret_of_no FROM sales_invoices s LEFT JOIN sales_invoices r ON r.id=s.ret_of WHERE s.id=?", (iid,), one=True) or abort(404)
+    if s["kind"] == "consign":
+        flash("فاکتور حاصل از تسویه امانی ویرایش مستقیم ندارد؛ از «ابطال / حذف» و تسویه دوباره استفاده کنید.", "bad")
+        return redirect(url_for("invoice", iid=iid))
+    if request.method == "POST":
+        try:
+            no, _ = _save_sale(s["kind"], iid)
+            db().commit()
+            flash(f"فاکتور {no} ویرایش شد.", "ok")
+            return redirect(url_for("invoice", iid=iid))
+        except ValueError as e:
+            db().rollback()
+            flash(str(e), "bad")
+    own = {}
+    if s["kind"] == "direct":
+        for m in q("SELECT item_id, wh_id, SUM(qty) s FROM stock_moves WHERE doc_type='FCT' AND doc_id=? GROUP BY 1,2", (iid,)):
+            own[(m["item_id"], m["wh_id"])] = m["s"]
+    return _sale_form("sale" if s["kind"] == "direct" else "sale_return", doc=s, init_lines=doc_init_lines("sales_lines", "inv_id", iid), own_moves=own)
 
 
 # ================= invoices & payments =================
@@ -272,6 +362,9 @@ def invoices():
 def invoice(iid):
     s = q(INV_SQL + " WHERE s.id=?", (iid,), one=True) or abort(404)
     if request.method == "POST":
+        if s["kind"] == "return":
+            flash("برای برگشت از فروش دریافتی ثبت نمی‌شود.", "bad")
+            return redirect(url_for("invoice", iid=iid))
         amount, method = to_int(request.form.get("amount")), request.form.get("method")
         date = norm_date(request.form.get("date")) or today_j()
         if amount <= 0 or method not in METHOD:
@@ -301,20 +394,8 @@ def payment_delete(pid):
 
 @app.route("/print/invoice/<int:iid>")
 def print_invoice(iid):
-    s = q(INV_SQL + " WHERE s.id=?", (iid,), one=True) or abort(404)
-    lines = sale_lines(iid)
-    gross = sum(l["qty"] * l["price"] for l in lines)
-    diff = s["total"] - s["pos"] - s["cash"]
-    extra = f"انبار: {s['whname']}" + (f" | ویزیتور: {s['vname']}" if s["vname"] else "") + (f" | عطف به امانی {s['cons_no']}" if s["cons_no"] else "")
-    doc = {"title": DOC["FCT"], "no": s["no"], "date": s["date"], "party": f"{s['cname']} ({s['ccode']})", "party_label": "مشتری",
-           "extra": extra, "note": s["note"] if s["kind"] == "direct" else None,
-           "cols": ["کد کالا", "نام کالا", "تعداد", "نرخ واحد (ریال)", "مبلغ (ریال)"],
-           "rows": [[l["code"], l["name"], pkr(l["qty"], l), money(l["price"]), money(l["qty"] * l["price"])] for l in lines],
-           "foot": [("جمع (ریال)", money(gross))] + ([("تخفیف", money(s["discount"]))] if s["discount"] else []) +
-                   [("مبلغ فاکتور (ریال)", money(s["total"])), ("دریافتی پوز", money(s["pos"])), ("دریافتی نقد", money(s["cash"])),
-                    ("مانده (ریال)", money(diff))],
-           "sign": ["فروشنده", "خریدار"], "user": uname(s["created_by"])}
-    return doc_out(doc, printing=True, pdf_url=url_for("print_invoice", iid=iid, fmt="pdf"))
+    from printing import sale_print
+    return sale_print(iid)
 
 
 @app.route("/invoices/<int:iid>/remove", methods=["GET", "POST"])
@@ -343,9 +424,14 @@ def invoice_remove(iid):
                 step = 2
             else:
                 session.pop("rm_inv", None)
+                if s["kind"] == "return" and not _can_remove_moves("SRT", iid):
+                    flash("حذف ممکن نیست: موجودی کالا در انبار منفی می‌شود.", "bad")
+                    return redirect(url_for("invoice", iid=iid))
                 x("DELETE FROM payments WHERE inv_id = ANY(?)", (ids,))
+                x("UPDATE sales_invoices SET ret_of=NULL WHERE ret_of = ANY(?)", (ids,))
                 for i in ids:
                     del_moves("FCT", i)
+                    del_moves("SRT", i)
                 x("DELETE FROM sales_invoices WHERE id = ANY(?)", (ids,))
                 if cid:
                     del_moves("MRJ", cid)

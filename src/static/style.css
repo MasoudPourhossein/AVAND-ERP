@@ -179,3 +179,18 @@ body:not(.p-void) form[action*="/delete"]:not(.keep-del){display:none!important}
  table.lines tfoot td:empty{display:none}
  table.lines td.n{text-align:right}
 }
+
+/* collapsible nav groups (tabs) */
+.nav details.ng{margin:2px 0}
+.nav details.ng>summary{list-style:none;display:flex;align-items:center;gap:10px;margin:2px 10px;padding:10px 12px;border-radius:10px;color:#e2e8f0;font-weight:700;font-size:13.5px;cursor:pointer;user-select:none}
+.nav details.ng>summary::-webkit-details-marker{display:none}
+.nav details.ng>summary::after{content:"‹";margin-right:auto;transition:transform .2s;font-size:16px;color:#64748b}
+.nav details.ng[open]>summary::after{transform:rotate(-90deg)}
+.nav details.ng>summary:hover{background:var(--side2)}
+.nav details.ng[open]>summary{color:#fff}
+.nav details.ng>a{margin-right:22px;font-size:13px;padding:7px 12px}
+.totbox td{padding:6px 12px}
+.lines-wrap{overflow-x:auto;-webkit-overflow-scrolling:touch}
+.lines td input{min-width:64px}.lines td.pick input{min-width:90px}
+@media (max-width:640px){.lines-wrap{overflow:visible}}
+input::placeholder{color:#a3adbf}

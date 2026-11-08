@@ -151,9 +151,22 @@ def user_delete(user_id):
 @app.route("/settings", methods=["GET", "POST"])
 def settings():
     if request.method == "POST":
+        from core import SELLER_KEYS
         title = request.form.get("title", "").strip()
         if title:
             set_setting("title", title[:80])
+        for k, _ in SELLER_KEYS:
+            set_setting(k, request.form.get(k, "").strip()[:300])
+        set_setting("vat_on", "1" if request.form.get("vat_on") else "0")
+        try:
+            vr = float(request.form.get("vat_rate", "10").replace("٫", ".") or 0)
+        except ValueError:
+            vr = -1
+        if not 0 <= vr <= 100:
+            db().rollback()
+            flash("نرخ مالیات نامعتبر است.", "bad")
+            return redirect(url_for("settings"))
+        set_setting("vat_rate", str(vr))
         if request.form.get("remove_logo") and os.path.exists(LOGO_PATH):
             os.remove(LOGO_PATH)
         f = request.files.get("logo")
@@ -174,7 +187,9 @@ def settings():
         db().commit()
         flash("تنظیمات ذخیره شد.", "ok")
         return redirect(url_for("settings"))
-    return render_template("settings.html", title=company())
+    from core import SELLER_KEYS, seller_info, setting
+    return render_template("settings.html", title=company(), keys=SELLER_KEYS, si=seller_info(),
+                           vat_on=setting("vat_on", "0") == "1", vat_rate=setting("vat_rate", "10"))
 
 
 @app.route("/logo.png")

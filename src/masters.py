@@ -6,6 +6,14 @@ from core import (app, q, x, v1, db, next_no, to_int, uid, price_at, buy_at, sto
 from jalali import today_j, norm_date
 
 
+def _vat_in():
+    v = str(request.form.get("vat_rate", "")).replace("٫", ".").strip()
+    try:
+        return None if v == "" else min(max(float(v), 0.0), 100.0)
+    except ValueError:
+        return None
+
+
 def _groups():
     return q("SELECT * FROM item_groups ORDER BY code")
 
@@ -28,8 +36,8 @@ def items():
         elif q("SELECT 1 FROM items WHERE code=?", (code,), one=True):
             flash("این کد کالا قبلا ثبت شده است.", "bad")
         else:
-            iid = x("INSERT INTO items(code,name,group_id,unit,pack,pack_unit,barcode) VALUES(?,?,?,?,?,?,?)",
-                    (code, name, gid, unit, pack, pack_unit, request.form.get("barcode", "").strip() or None))
+            iid = x("INSERT INTO items(code,name,group_id,unit,pack,pack_unit,barcode,vat_rate) VALUES(?,?,?,?,?,?,?,?)",
+                    (code, name, gid, unit, pack, pack_unit, request.form.get("barcode", "").strip() or None, _vat_in()))
             if price or buy:
                 x("INSERT INTO prices(item_id,date,price,buy) VALUES(?,?,?,?)", (iid, date, price, buy))
             msg = f"کالا «{name}» ثبت شد."
@@ -58,11 +66,11 @@ def item_edit(iid):
         if code != it["code"] and q("SELECT 1 FROM items WHERE code=? AND id<>?", (code, iid), one=True):
             flash("این کد کالا برای کالای دیگری ثبت شده است.", "bad")
         elif name:
-            x("""UPDATE items SET code=?, name=?, group_id=?, unit=?, pack=?, pack_unit=?, barcode=?, active=?, note=? WHERE id=?""",
+            x("""UPDATE items SET code=?, name=?, group_id=?, unit=?, pack=?, pack_unit=?, barcode=?, active=?, note=?, vat_rate=? WHERE id=?""",
               (code, name, to_int(request.form.get("group_id")) or None, request.form.get("unit", "").strip() or "باکس",
                max(to_int(request.form.get("pack"), it["pack"]), 1), request.form.get("pack_unit", "").strip() or "کارتن",
                request.form.get("barcode", "").strip() or None, 1 if request.form.get("active") else 0,
-               request.form.get("note", "").strip() or None, iid))
+               request.form.get("note", "").strip() or None, _vat_in(), iid))
             db().commit()
             flash("ویرایش ذخیره شد.", "ok")
         return redirect(url_for("item_edit", iid=iid))
@@ -339,19 +347,18 @@ def _person_form(pid=None):
                 phone=f.get("phone", "").strip() or None, mobile=f.get("mobile", "").strip() or None,
                 address=f.get("address", "").strip() or None, national_id=f.get("national_id", "").strip() or None,
                 economic_code=f.get("economic_code", "").strip() or None, note=f.get("note", "").strip() or None,
-                credit_limit=max(to_int(f.get("credit_limit")), 0), active=1 if f.get("active", "1") else 0)
+                credit_limit=max(to_int(f.get("credit_limit")), 0), active=1 if f.get("active", "1") else 0,
+                ptype="legal" if f.get("ptype") == "legal" else "real", reg_no=f.get("reg_no", "").strip() or None,
+                postal_code=f.get("postal_code", "").strip() or None)
 
 
 def visitors_list():
     return q("SELECT id, code, name FROM persons WHERE is_visitor=1 AND active=1 ORDER BY code")
 
 
-BAL_SQL = """
- COALESCE((SELECT SUM((SELECT COALESCE(SUM(qty*price),0) FROM sales_lines WHERE inv_id=s.id)-s.discount) FROM sales_invoices s WHERE s.customer_id=p.id),0)
- - COALESCE((SELECT SUM(pa.amount) FROM payments pa JOIN sales_invoices s ON s.id=pa.inv_id WHERE s.customer_id=p.id),0)"""
-PUR_SQL = """
- COALESCE((SELECT SUM(CASE WHEN u.kind='return' THEN -1 ELSE 1 END*((SELECT COALESCE(SUM(qty*price),0) FROM purchase_lines WHERE pur_id=u.id)-u.discount))
-           FROM purchases u WHERE u.supplier_id=p.id),0)"""
+from core import CUST_BAL, SUP_BAL
+BAL_SQL = CUST_BAL.format(p="p.id")
+PUR_SQL = SUP_BAL.format(p="p.id")
 
 
 @app.route("/persons", methods=["GET", "POST"])
@@ -405,13 +412,12 @@ def person(pid):
     st = {
         "receivable": v1(f"SELECT {BAL_SQL} FROM persons p WHERE p.id=?", (pid,)),
         "purchased": v1(f"SELECT {PUR_SQL} FROM persons p WHERE p.id=?", (pid,)),
-        "visitor_sales": v1(f"SELECT SUM({'(COALESCE((SELECT SUM(qty*price) FROM sales_lines WHERE inv_id=s.id),0)-s.discount)'}) FROM sales_invoices s WHERE s.visitor_id=?", (pid,)),
+        "visitor_sales": v1("SELECT SUM(total*sg) FROM v_si WHERE visitor_id=?", (pid,)),
         "open_amani": v1("SELECT SUM(l.qty) FROM cons_lines l JOIN consignments c ON c.id=l.cons_id WHERE c.visitor_id=? AND c.status='open'", (pid,)),
     }
     invs = q(INV_SQL + " WHERE s.customer_id=? OR s.visitor_id=? ORDER BY s.date DESC, s.no DESC LIMIT 30", (pid, pid))
     cons = q(CONS_SQL + " WHERE c.visitor_id=? ORDER BY c.date DESC, c.no DESC LIMIT 15", (pid,)) if p["is_visitor"] else []
-    purs = q("""SELECT u.*, (SELECT COALESCE(SUM(qty*price),0) FROM purchase_lines WHERE pur_id=u.id)-u.discount total
-                FROM purchases u WHERE u.supplier_id=? ORDER BY u.date DESC, u.no DESC LIMIT 20""", (pid,)) if p["is_supplier"] else []
+    purs = q("SELECT * FROM v_pu u WHERE u.supplier_id=? ORDER BY u.date DESC, u.no DESC LIMIT 20", (pid,)) if p["is_supplier"] else []
     custs = q(f"SELECT p.id, p.code, p.name, p.mobile, {BAL_SQL} AS receivable FROM persons p WHERE p.visitor_id=? ORDER BY p.code", (pid,)) \
         if p["is_visitor"] else []
     return render_template("person.html", p=p, st=st, invs=invs, cons=cons, purs=purs, custs=custs, visitors=visitors_list())

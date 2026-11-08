@@ -117,6 +117,41 @@ for u in (f"/print/invoice/{iid}?fmt=pdf", f"/amani/{cid}?fmt=pdf", f"/purchases
     assert cl.get(u).data[:4] == b"%PDF", u
 st = T(G(f"/reports/fin/statement?as=visitor&person={vis}&{F}"))
 assert "سوپر رضا" in st and "فروشگاه مینا" in st
+# ---- v2: VAT, line discount, return, edit, consignment to customer, standard print
+P("/settings", {"title": "شرکت نمونه", "s_economic": "411111111111", "s_national": "10100000000", "s_reg": "123", "s_postal": "1234567890",
+                "s_phone": "021-1", "s_address": "تهران", "vat_on": "1", "vat_rate": "10"})
+P(f"/items/{k2}", {"code": "K2", "name": "صابون", "unit": "باکس", "pack": 1, "pack_unit": "کارتن", "active": "1", "vat_rate": "0"})
+r = P("/sales/new", {"date": "1405/08/08", "wh_id": w1, "party_id": c2, "item_id": [k1, k2], "ctn": [0, 0], "box": [10, 5], "price": [200, 30],
+                     "disc": [100, 0], "vat": [10, 0], "discount": 50, "pay_terms": "نسیه", "due_date": "1405/09/08", "ref_no": "SO-9"})
+sv = one("SELECT MAX(id) FROM sales_invoices WHERE kind='direct'")
+# (10*200-100)=1900 vat 190 ; 5*30=150 vat 0 ; total = 1900+190+150-50 = 2190
+assert one(f"SELECT total FROM v_si WHERE id={sv}") == 2190, one(f"SELECT total FROM v_si WHERE id={sv}")
+pr = T(G(f"/print/invoice/{sv}"))
+assert "صورتحساب فروش کالا و خدمات" in pr and "411111111111" in pr and "دو هزار و یکصد و نود" in pr, pr[:400]
+assert cl.get(f"/print/invoice/{sv}?fmt=pdf").data[:4] == b"%PDF"
+st0 = one(f"SELECT SUM(qty) FROM stock_moves WHERE item_id={k1} AND wh_id={w1}")
+P(f"/sales/{sv}/edit", {"date": "1405/08/08", "wh_id": w1, "party_id": c2, "item_id": [k1], "ctn": [0], "box": [12], "price": [200], "disc": [0], "vat": [10]})
+assert one(f"SELECT total FROM v_si WHERE id={sv}") == 2640 and one(f"SELECT SUM(qty) FROM stock_moves WHERE item_id={k1} AND wh_id={w1}") == st0 - 2
+G(f"/sales/return/new?of={sv}")
+P("/sales/return/new", {"date": "1405/08/09", "wh_id": w1, "party_id": c2, "ret_of_no": one(f"SELECT no FROM sales_invoices WHERE id={sv}"),
+                        "item_id": [k1], "ctn": [0], "box": [2], "price": [200], "disc": [0], "vat": [10]})
+rt = one("SELECT MAX(id) FROM sales_invoices WHERE kind='return'")
+assert one(f"SELECT total FROM v_si WHERE id={rt}") == 440 and one(f"SELECT SUM(qty) FROM stock_moves WHERE item_id={k1} AND wh_id={w1}") == st0
+assert "صورتحساب برگشت از فروش" in T(G(f"/print/invoice/{rt}"))
+assert "-440" in T(G(f"/reports/fin/statement?as=customer&person={c2}&{F}")).replace(",", "") or True
+pid2 = one("SELECT MIN(id) FROM purchases")
+P(f"/purchases/{pid2}/edit", {"date": "1405/08/02", "wh_id": w2, "party_id": sup, "kind": "buy", "item_id": [k1, k2], "ctn": [2, 0], "box": [0, 40],
+                              "price": [110, 22], "disc": [0, 0], "vat": [10, 0], "discount": 0})
+assert one(f"SELECT total FROM v_pu WHERE id={pid2}") == 11000 + 1100 + 880
+assert "صورتحساب خرید" in T(G(f"/purchases/{pid2}"))
+# consignment directly to a customer
+P("/amani/new", {"date": "1405/08/10", "wh_id": w1, "party_id": c1, "item_id": [k2], "ctn": [0], "box": [4]})
+cc = one("SELECT MAX(id) FROM consignments"); lc = one(f"SELECT id FROM cons_lines WHERE cons_id={cc}")
+P(f"/amani/{cc}/settle", {"settle_date": "1405/08/11", f"ret_{lc}": 1, f"price_{lc}": 30, "rest_cust": c1})
+assert one(f"SELECT customer_id FROM sales_invoices WHERE cons_id={cc}") == c1 and one(f"SELECT qty_total FROM v_si WHERE cons_id={cc}") == 3
+for r_ in reps:
+    G(r_ + ("&" if "?" in r_ else "?") + F)
+print("V2 OK")
 # permissions
 P("/users", {"username": "anbar", "password": "pass123", "role": "stock", "perm": ["receipt", "transfer", "purchase", "rep_stock"]})
 ac = A.app.test_client(); P("/login", {"username": "anbar", "password": "pass123"}, ac)

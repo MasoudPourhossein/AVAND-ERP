@@ -12,36 +12,55 @@
   <div class="who"><b>{{ user.fullname or user.username }}</b>{{ PRESETS[user.role][0] if user.role in PRESETS else '' }}</div>
   <nav class="nav">
     {{ nl('/', 'layout-dashboard', 'داشبورد') }}
-    {% if can('amani','settle','sale','payment','rep_sales','rep_fin') %}<h4>فروش</h4>{% endif %}
-    {{ nl('/amani/new', 'send', 'صدور فاکتور امانی', can('amani')) }}
-    {{ nl('/amani?status=open', 'hourglass', 'امانی‌ها و تسویه', can('amani','settle','rep_sales')) }}
-    {{ nl('/sales/new', 'receipt', 'فاکتور فروش مستقیم', can('sale')) }}
-    {{ nl('/invoices', 'file-check', 'فاکتورهای فروش و دریافت', can('payment','settle','sale','rep_sales','rep_fin')) }}
-    {% if can('purchase','receipt','transfer','rep_stock') %}<h4>انبار و خرید</h4>{% endif %}
-    {{ nl('/purchases/new', 'inbox', 'فاکتور خرید', can('purchase')) }}
-    {{ nl('/purchases', 'list', 'فاکتورهای خرید', can('purchase','rep_stock','rep_fin')) }}
-    {{ nl('/receipts/new', 'inbox', 'رسید انبار', can('receipt')) }}
-    {{ nl('/receipts', 'list', 'رسیدهای انبار', can('receipt','rep_stock')) }}
-    {{ nl('/transfers/new', 'send', 'حواله بین انبار', can('transfer')) }}
-    {{ nl('/transfers', 'list', 'حواله‌ها', can('transfer','rep_stock')) }}
-    {% if can('items','persons','setup','rep_stock','rep_fin','rep_sales') %}<h4>اطلاعات پایه</h4>{% endif %}
-    {{ nl('/items', 'package', 'کالاها', can('items','rep_stock')) }}
-    {{ nl('/prices', 'tags', 'نرخ خرید و فروش', can('items')) }}
-    {{ nl('/persons', 'users', 'اشخاص و طرف حساب‌ها', can('persons','rep_fin','rep_sales')) }}
-    {{ nl('/warehouses', 'warehouse', 'انبارها', can('setup','rep_stock')) }}
-    {{ nl('/accounts', 'list', 'کدینگ حساب‌ها', can('setup','rep_fin')) }}
-    {{ nl('/cost-centers', 'list', 'مراکز هزینه', can('setup','rep_fin')) }}
-    {% if can('rep_stock','rep_sales','rep_fin') %}<h4>گزارش‌ها</h4>{{ nl('/reports', 'chart-column', 'همه گزارش‌ها') }}{% endif %}
-    {{ nl('/reports/stats', 'trending-up', 'آمار و مقایسه فروش', can('rep_sales')) }}
-    {{ nl('/reports/stock', 'boxes', 'موجودی و ارزش انبار', can('rep_stock')) }}
-    {{ nl('/reports/fin/daily', 'wallet', 'دریافتی روزانه ویزیتورها', can('rep_fin')) }}
-    {{ nl('/reports/fin/summary', 'scale', 'خلاصه وضعیت مالی', can('rep_fin')) }}
-    <h4>سیستم</h4>
-    {{ nl('/users', 'user-cog', 'کاربران و دسترسی‌ها', can('users')) }}
-    {{ nl('/settings', 'shield-check', 'تنظیمات (لوگو و عنوان)', can('users')) }}
-    {% if can('users') %}<a href="/backup">{{ icon('download') }}<span>پشتیبان‌گیری</span></a>{% endif %}
-    {{ nl('/password', 'key-round', 'تغییر رمز عبور') }}
-    <a href="/logout">{{ icon('log-out') }}<span>خروج</span></a>
+    {% if can('amani','settle','sale','payment','rep_sales','rep_fin') %}
+    <details class="ng"><summary>{{ icon('receipt') }}<span>فروش</span></summary>
+      {{ nl('/sales/new', 'receipt', 'فاکتور فروش', can('sale')) }}
+      {{ nl('/sales/return/new', 'undo-2', 'برگشت از فروش', can('sale')) }}
+      {{ nl('/invoices', 'file-check', 'فاکتورهای فروش و دریافت', can('payment','settle','sale','rep_sales','rep_fin')) }}
+      {{ nl('/amani/new', 'send', 'فاکتور امانی (ویزیتور / مشتری)', can('amani')) }}
+      {{ nl('/amani?status=open', 'hourglass', 'امانی‌ها و تسویه', can('amani','settle','rep_sales')) }}
+    </details>{% endif %}
+    {% if can('purchase','rep_stock','rep_fin') %}
+    <details class="ng"><summary>{{ icon('inbox') }}<span>خرید</span></summary>
+      {{ nl('/purchases/new', 'inbox', 'فاکتور خرید / برگشت از خرید', can('purchase')) }}
+      {{ nl('/purchases', 'list', 'فاکتورهای خرید', can('purchase','rep_stock','rep_fin')) }}
+      {{ nl('/persons?kind=supplier', 'users', 'تامین‌کنندگان', can('persons','rep_fin')) }}
+    </details>{% endif %}
+    {% if can('receipt','transfer','items','setup','rep_stock') %}
+    <details class="ng"><summary>{{ icon('warehouse') }}<span>انبار و کالا</span></summary>
+      {{ nl('/items', 'package', 'کالاها', can('items','rep_stock')) }}
+      {{ nl('/prices', 'tags', 'نرخ خرید و فروش', can('items')) }}
+      {{ nl('/groups', 'list', 'گروه‌های کالا', can('items')) }}
+      {{ nl('/items/import', 'file-spreadsheet', 'ورود گروهی از اکسل', can('items')) }}
+      {{ nl('/receipts/new', 'inbox', 'رسید انبار', can('receipt')) }}
+      {{ nl('/receipts', 'list', 'رسیدهای انبار', can('receipt','rep_stock')) }}
+      {{ nl('/transfers/new', 'send', 'حواله بین انبار', can('transfer')) }}
+      {{ nl('/transfers', 'list', 'حواله‌ها', can('transfer','rep_stock')) }}
+      {{ nl('/warehouses', 'warehouse', 'انبارها', can('setup','rep_stock')) }}
+    </details>{% endif %}
+    {% if can('persons','setup','rep_fin','rep_sales') %}
+    <details class="ng"><summary>{{ icon('users') }}<span>اشخاص و حساب‌ها</span></summary>
+      {{ nl('/persons', 'users', 'همه اشخاص', can('persons','rep_fin','rep_sales')) }}
+      {{ nl('/persons?kind=customer', 'users', 'مشتریان', can('persons','rep_fin','rep_sales')) }}
+      {{ nl('/persons?kind=visitor', 'users', 'ویزیتورها', can('persons','rep_fin','rep_sales')) }}
+      {{ nl('/accounts', 'list', 'کدینگ حساب‌ها', can('setup','rep_fin')) }}
+      {{ nl('/cost-centers', 'list', 'مراکز هزینه', can('setup','rep_fin')) }}
+    </details>{% endif %}
+    {% if can('rep_stock','rep_sales','rep_fin') %}
+    <details class="ng"><summary>{{ icon('chart-column') }}<span>گزارش‌ها</span></summary>
+      {{ nl('/reports', 'chart-column', 'همه گزارش‌ها') }}
+      {{ nl('/reports/stats', 'trending-up', 'آمار و مقایسه فروش', can('rep_sales')) }}
+      {{ nl('/reports/stock', 'boxes', 'موجودی و ارزش انبار', can('rep_stock')) }}
+      {{ nl('/reports/fin/daily', 'wallet', 'دریافتی روزانه ویزیتورها', can('rep_fin')) }}
+      {{ nl('/reports/fin/summary', 'scale', 'خلاصه وضعیت مالی', can('rep_fin')) }}
+    </details>{% endif %}
+    <details class="ng"><summary>{{ icon('user-cog') }}<span>سیستم</span></summary>
+      {{ nl('/users', 'user-cog', 'کاربران و دسترسی‌ها', can('users')) }}
+      {{ nl('/settings', 'shield-check', 'تنظیمات شرکت، لوگو و مالیات', can('users')) }}
+      {% if can('users') %}<a href="/backup">{{ icon('download') }}<span>پشتیبان‌گیری</span></a>{% endif %}
+      {{ nl('/password', 'key-round', 'تغییر رمز عبور') }}
+      <a href="/logout">{{ icon('log-out') }}<span>خروج</span></a>
+    </details>
   </nav>
 </aside>
 <div class="shade" onclick="document.body.classList.remove('nav-open')"></div>
@@ -62,6 +81,8 @@
   <div class="mb2" id="gsr"><div class="res muted" style="cursor:default">حداقل یک حرف تایپ کنید.</div></div></div>
 </div>
 <script>
+(function(){const gs=[...document.querySelectorAll('.nav details.ng')];let st={};try{st=JSON.parse(localStorage.getItem('navg')||'{}')}catch(e){}
+  gs.forEach((d,i)=>{if(d.querySelector('a.on')||st[i])d.open=true;d.addEventListener('toggle',()=>{st[i]=d.open;try{localStorage.setItem('navg',JSON.stringify(st))}catch(e){}})})})();
 (function(){
   const m=document.getElementById('gsm'),inp=document.getElementById('gsq'),out=document.getElementById('gsr');let t,act=-1;
   window.openSearch=function(){m.classList.add('on');inp.value='';out.innerHTML='<div class="res muted" style="cursor:default">حداقل یک حرف تایپ کنید.</div>';setTimeout(()=>inp.focus(),30)};

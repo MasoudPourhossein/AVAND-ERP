@@ -1,14 +1,15 @@
 {% extends "base.html" %}{% from "_m.html" import period, vsel, icon %}{% block h %}فاکتورهای فروش{% endblock %}
 {% block body %}<div class="card">
-{% if can('sale') %}<div class="bar no-print"><a class="btn g" href="/sales/new">{{ icon('plus') }} فاکتور فروش مستقیم</a></div>{% endif %}
+{% if can('sale') %}<div class="bar no-print"><a class="btn g" href="/sales/new">{{ icon('plus') }} فاکتور فروش</a><a class="btn o" href="/sales/return/new">{{ icon('undo-2') }} برگشت از فروش</a></div>{% endif %}
 {% call period(f,t) %}{{ vsel(visitors,vid) }}
 <select name="customer"><option value="">همه مشتریان</option>{% for c in customers %}<option value="{{ c.id }}" {{ 'selected' if c.id==cid }}>{{ c.code }} - {{ c.name }}</option>{% endfor %}</select>
 <select name="only"><option value="">همه</option><option value="diff" {{ 'selected' if only=='diff' }}>فقط وصول‌نشده / اختلاف</option></select>{% endcall %}
 <table><tr><th>شماره</th><th>تاریخ</th><th>نوع</th><th>مشتری</th><th>ویزیتور</th><th class="n">مبلغ فاکتور</th><th class="n">پوز</th><th class="n">نقد</th><th class="n">مانده</th><th>وضعیت</th><th class="no-print"></th></tr>
-{% for c in rows %}{% set s=inv_status(c) %}<tr><td>{{ c.no }}</td><td>{{ c.date }}</td><td>{{ 'امانی ' ~ c.cons_no if c.kind=='consign' else 'مستقیم' }}</td>
+{% for c in rows %}{% set s=inv_status(c) %}<tr><td>{{ c.no }}</td><td>{{ c.date }}</td><td>{% if c.kind=='return' %}<span class="tag warn">برگشت</span>{% elif c.kind=='consign' %}امانی {{ c.cons_no }}{% else %}مستقیم{% endif %}</td>
 <td><a href="/persons/{{ c.customer_id }}">{{ c.cname }}</a></td><td>{{ c.vname or '' }}</td>
-<td class="n">{{ c.total|m }}</td><td class="n">{{ c.pos|m }}</td><td class="n">{{ c.cash|m }}</td><td class="n">{{ (c.total-c.pos-c.cash)|m }}</td>
+<td class="n {{ 'neg' if c.kind=='return' }}">{{ (c.total*c.sg)|m }}</td><td class="n">{{ c.pos|m }}</td><td class="n">{{ c.cash|m }}</td><td class="n">{{ (c.total*c.sg-c.pos-c.cash)|m }}</td>
 <td><span class="tag {{ s[1] }}">{{ s[0] }}</span></td><td class="no-print"><a class="btn sm" href="/invoices/{{ c.id }}">باز کردن / دریافت</a></td></tr>
 {% else %}<tr><td colspan="11" class="muted">فاکتوری نیست.</td></tr>{% endfor %}
-<tfoot><tr><td colspan="5">جمع</td><td class="n">{{ rows|sum(attribute='total')|m }}</td><td class="n">{{ rows|sum(attribute='pos')|m }}</td><td class="n">{{ rows|sum(attribute='cash')|m }}</td>
-<td class="n">{{ (rows|sum(attribute='total') - rows|sum(attribute='pos') - rows|sum(attribute='cash'))|m }}</td><td colspan="2"></td></tr></tfoot></table></div>{% endblock %}
+{% set ns = namespace(t=0) %}{% for c in rows %}{% set ns.t = ns.t + c.total*c.sg %}{% endfor %}
+<tfoot><tr><td colspan="5">جمع (برگشت‌ها کسر شده)</td><td class="n">{{ ns.t|m }}</td><td class="n">{{ rows|sum(attribute='pos')|m }}</td><td class="n">{{ rows|sum(attribute='cash')|m }}</td>
+<td class="n">{{ (ns.t - rows|sum(attribute='pos') - rows|sum(attribute='cash'))|m }}</td><td colspan="2"></td></tr></tfoot></table></div>{% endblock %}

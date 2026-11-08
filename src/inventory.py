@@ -6,20 +6,27 @@ from jalali import today_j, norm_date
 import export
 
 
-def parse_lines(with_price=False):
+def parse_lines(with_price=False, full=False):
+    """-> [(item_id, qty, price)] or with full=True [(item_id, qty, price, disc, vat_rate)]"""
     ids = request.form.getlist("item_id")
     ctns, boxes = request.form.getlist("ctn"), request.form.getlist("box")
     if not ctns:
         ctns, boxes = [0] * len(ids), request.form.getlist("qty")
     prices = request.form.getlist("price") if with_price else []
     prices += [0] * (len(ids) - len(prices))
+    discs, vats = request.form.getlist("disc"), request.form.getlist("vat")
+    discs += [0] * (len(ids) - len(discs)); vats += [""] * (len(ids) - len(vats))
     packs = {r["id"]: r["pack"] or 1 for r in q("SELECT id, pack FROM items")}
     lines, seen = [], set()
-    for i, ct, bx, pr in zip(ids, ctns, boxes, prices):
-        i, ct, bx, pr = to_int(i), to_int(ct), to_int(bx), to_int(pr)
+    for i, ct, bx, pr, ds, vr in zip(ids, ctns, boxes, prices, discs, vats):
+        i, ct, bx, pr, ds = to_int(i), to_int(ct), to_int(bx), to_int(pr), to_int(ds)
+        try:
+            vr = float(str(vr).replace("٫", ".").strip() or 0)
+        except ValueError:
+            raise ValueError("نرخ مالیات نامعتبر است.")
         if not i:
             continue
-        if ct < 0 or bx < 0 or pr < 0:
+        if ct < 0 or bx < 0 or pr < 0 or ds < 0 or not (0 <= vr <= 100):
             raise ValueError("عدد منفی مجاز نیست.")
         qt = ct * packs.get(i, 1) + bx
         if qt <= 0:
@@ -27,7 +34,9 @@ def parse_lines(with_price=False):
         if i in seen:
             raise ValueError("یک کالا دو بار در سند آمده است.")
         seen.add(i)
-        lines.append((i, qt, pr))
+        if ds > qt * pr:
+            raise ValueError("تخفیف یک ردیف از مبلغ آن بیشتر است.")
+        lines.append((i, qt, pr, ds, vr) if full else (i, qt, pr))
     if not lines:
         raise ValueError("حداقل یک ردیف کالا با تعداد معتبر وارد کنید.")
     return lines
@@ -40,9 +49,27 @@ def stock_map():
     return out
 
 
-def form_ctx(mode, parties=(), visitors=()):
-    return dict(mode=mode, items=stock_rows(), whs=warehouses_list(), wh=default_wh(), stock_map=stock_map(),
-                parties=parties, visitors=visitors)
+def form_ctx(mode, parties=(), visitors=(), doc=None, init_lines=(), own_moves=None):
+    from core import vat_default, setting
+    sm = stock_map()
+    for (i, w), qv in (own_moves or {}).items():   # editing: this document's own outflow is available again
+        sm.setdefault(i, {})[w] = sm.get(i, {}).get(w, 0) - qv
+    return dict(mode=mode, items=stock_rows(), whs=warehouses_list(), wh=default_wh(), stock_map=sm,
+                parties=parties, visitors=visitors, doc=doc, init_lines=list(init_lines),
+                vat_on=setting("vat_on", "0") == "1", vat_def=vat_default())
+
+
+def line_vat(qt, pr, ds, vr):
+    return int(round((qt * pr - ds) * vr / 100.0))
+
+
+def doc_init_lines(table, fk, did):
+    out = []
+    for l in q(f"SELECT l.*, i.pack FROM {table} l JOIN items i ON i.id=l.item_id WHERE l.{fk}=? ORDER BY l.id", (did,)):
+        k = l["pack"] or 1
+        c, b = divmod(l["qty"], k) if k > 1 else (0, l["qty"])
+        out.append({"id": l["item_id"], "ctn": c, "box": b, "price": l["price"], "disc": l.get("disc", 0), "vat": l.get("vat_rate", 0)})
+    return out
 
 
 def doc_out(doc, **kw):
@@ -132,10 +159,8 @@ def receipt_delete(rid):
 
 
 # ================= purchases =================
-PUR_LIST = """SELECT u.*, s.name sname, s.code scode, w.name whname,
-  (SELECT COALESCE(SUM(qty*price),0) FROM purchase_lines WHERE pur_id=u.id) gross,
-  (SELECT COALESCE(SUM(qty),0) FROM purchase_lines WHERE pur_id=u.id) qty
-  FROM purchases u JOIN persons s ON s.id=u.supplier_id JOIN warehouses w ON w.id=u.wh_id"""
+PUR_LIST = """SELECT u.*, s.name sname, s.code scode, w.name whname, u.qty_total qty
+  FROM v_pu u JOIN persons s ON s.id=u.supplier_id JOIN warehouses w ON w.id=u.wh_id"""
 
 
 @app.route("/purchases")
@@ -150,54 +175,94 @@ def purchases():
     return render_template("purchases.html", rows=rows, f=f, t=t, sid=sid, sups=sups)
 
 
+def _suppliers():
+    return q("SELECT id, code, name, visitor_id FROM persons WHERE is_supplier=1 AND active=1 ORDER BY code")
+
+
+def _save_purchase(pid=None):
+    """create (pid=None) or replace a purchase invoice from the posted form -> (no, id)"""
+    date, wh = norm_date(request.form.get("date")), to_int(request.form.get("wh_id"))
+    sid = to_int(request.form.get("party_id"))
+    kind = "return" if request.form.get("kind") == "return" else "buy"
+    if not date:
+        raise ValueError("تاریخ نامعتبر است.")
+    if not wh_valid(wh):
+        raise ValueError("انبار نامعتبر است.")
+    if not q("SELECT 1 FROM persons WHERE id=? AND is_supplier=1", (sid,), one=True):
+        raise ValueError("تامین‌کننده را انتخاب کنید.")
+    lines = parse_lines(True, full=True)
+    disc = max(to_int(request.form.get("discount")), 0)
+    if disc > sum(qt * p - d for _, qt, p, d, _v in lines):
+        raise ValueError("تخفیف از جمع فاکتور بیشتر است.")
+    hdr = (kind, date, sid, wh, request.form.get("ref_no", "").strip() or None, disc, request.form.get("note"),
+           norm_date(request.form.get("due_date")), request.form.get("pay_terms") or None)
+    if pid:
+        old = q("SELECT * FROM purchases WHERE id=?", (pid,), one=True)
+        del_moves("PUR", pid)
+        x("DELETE FROM purchase_lines WHERE pur_id=?", (pid,))
+        x("UPDATE purchases SET kind=?, date=?, supplier_id=?, wh_id=?, ref_no=?, discount=?, note=?, due_date=?, pay_terms=?, updated_by=? WHERE id=?",
+          hdr + (uid(), pid))
+        no = old["no"]
+    else:
+        no = next_no("PUR")
+        pid = x("""INSERT INTO purchases(no,kind,date,supplier_id,wh_id,ref_no,discount,note,due_date,pay_terms,created_by)
+                   VALUES(?,?,?,?,?,?,?,?,?,?,?)""", (no,) + hdr + (uid(),))
+    if kind == "return":
+        check_stock({i: qt for i, qt, *_ in lines}, wh)
+    for i, qt, p, d, vr in lines:
+        x("INSERT INTO purchase_lines(pur_id,item_id,qty,price,disc,vat_rate,vat) VALUES(?,?,?,?,?,?,?)", (pid, i, qt, p, d, vr, line_vat(qt, p, d, vr)))
+    sign = -1 if kind == "return" else 1
+    add_moves("PUR", pid, no, date, [(i, wh, sign * qt, (qt * p - d) / qt if qt else p) for i, qt, p, d, _v in lines])
+    if not _no_negative("PUR", pid):
+        raise ValueError("با این تغییر موجودی بعضی کالاها در انبار منفی می‌شود.")
+    return no, pid
+
+
+def _no_negative(doc_type, did):
+    for m in q("SELECT DISTINCT item_id, wh_id FROM stock_moves WHERE doc_type=? AND doc_id=?", (doc_type, did)):
+        if v1("SELECT SUM(qty) FROM stock_moves WHERE item_id=? AND wh_id=?", (m["item_id"], m["wh_id"])) < 0:
+            return False
+    return True
+
+
 @app.route("/purchases/new", methods=["GET", "POST"])
 def purchase_new():
-    sups = q("SELECT id, code, name, visitor_id FROM persons WHERE is_supplier=1 AND active=1 ORDER BY code")
     if request.method == "POST":
         try:
-            date, wh = norm_date(request.form.get("date")), to_int(request.form.get("wh_id"))
-            sid = to_int(request.form.get("party_id"))
-            kind = "return" if request.form.get("kind") == "return" else "buy"
-            if not date:
-                raise ValueError("تاریخ نامعتبر است.")
-            if not wh_valid(wh):
-                raise ValueError("انبار نامعتبر است.")
-            if not q("SELECT 1 FROM persons WHERE id=? AND is_supplier=1", (sid,), one=True):
-                raise ValueError("تامین‌کننده را انتخاب کنید.")
-            lines = parse_lines(True)
-            disc = max(to_int(request.form.get("discount")), 0)
-            if disc > sum(qt * p for _, qt, p in lines):
-                raise ValueError("تخفیف از جمع فاکتور بیشتر است.")
-            if kind == "return":
-                check_stock({i: qt for i, qt, _ in lines}, wh)
-            no = next_no("PUR")
-            pid = x("INSERT INTO purchases(no,kind,date,supplier_id,wh_id,ref_no,discount,note,created_by) VALUES(?,?,?,?,?,?,?,?,?)",
-                    (no, kind, date, sid, wh, request.form.get("ref_no", "").strip() or None, disc, request.form.get("note"), uid()))
-            for i, qt, p in lines:
-                x("INSERT INTO purchase_lines(pur_id,item_id,qty,price) VALUES(?,?,?,?)", (pid, i, qt, p))
-            sign = -1 if kind == "return" else 1
-            add_moves("PUR", pid, no, date, [(i, wh, sign * qt, p) for i, qt, p in lines])
+            no, pid = _save_purchase()
             db().commit()
-            flash(f"{'برگشت از خرید' if kind == 'return' else 'فاکتور خرید'} شماره {no} ثبت شد.", "ok")
+            flash(f"{'برگشت از خرید' if request.form.get('kind') == 'return' else 'فاکتور خرید'} شماره {no} ثبت شد.", "ok")
             return redirect(url_for("purchase_view", pid=pid))
         except ValueError as e:
             db().rollback()
             flash(str(e), "bad")
-    return render_template("doc_form.html", **form_ctx("purchase", parties=sups))
+    return render_template("doc_form.html", **form_ctx("purchase", parties=_suppliers()))
+
+
+@app.route("/purchases/<int:pid>/edit", methods=["GET", "POST"])
+def purchase_edit(pid):
+    p = q("SELECT * FROM purchases WHERE id=?", (pid,), one=True) or abort(404)
+    if request.method == "POST":
+        try:
+            no, _ = _save_purchase(pid)
+            db().commit()
+            flash(f"فاکتور خرید {no} ویرایش شد.", "ok")
+            return redirect(url_for("purchase_view", pid=pid))
+        except ValueError as e:
+            db().rollback()
+            flash(str(e), "bad")
+    own = {}
+    if p["kind"] == "return":
+        for m in q("SELECT item_id, wh_id, SUM(qty) s FROM stock_moves WHERE doc_type='PUR' AND doc_id=? GROUP BY 1,2", (pid,)):
+            own[(m["item_id"], m["wh_id"])] = m["s"]
+    return render_template("doc_form.html", **form_ctx("purchase", parties=_suppliers(), doc=p,
+                                                       init_lines=doc_init_lines("purchase_lines", "pur_id", pid), own_moves=own))
 
 
 @app.route("/purchases/<int:pid>")
 def purchase_view(pid):
-    p = q(PUR_LIST + " WHERE u.id=?", (pid,), one=True) or abort(404)
-    lines = item_lines("purchase_lines", "pur_id", pid)
-    title = DOC["PRT"] if p["kind"] == "return" else DOC["PUR"]
-    doc = {"title": title, "no": p["no"], "date": p["date"], "party": f"{p['sname']} ({p['scode']})", "party_label": "تامین‌کننده",
-           "note": p["note"], "extra": f"انبار: {p['whname']}" + (f" | شماره فاکتور تامین‌کننده: {p['ref_no']}" if p["ref_no"] else ""),
-           "cols": ["کد کالا", "نام کالا", "تعداد", "نرخ واحد", "مبلغ"],
-           "rows": [[l["code"], l["name"], pkr(l["qty"], l), money(l["price"]), money(l["qty"] * l["price"])] for l in lines],
-           "foot": [("جمع (ریال)", money(p["gross"])), ("تخفیف", money(p["discount"])), ("مبلغ نهایی (ریال)", money(p["gross"] - p["discount"]))],
-           "sign": ["تحویل‌دهنده", "انباردار"], "user": uname(p["created_by"])}
-    return doc_out(doc, back=url_for("purchases"), del_url=url_for("purchase_delete", pid=pid), pdf_url=url_for("purchase_view", pid=pid, fmt="pdf"))
+    from printing import purchase_print
+    return purchase_print(pid)
 
 
 @app.post("/purchases/<int:pid>/delete")

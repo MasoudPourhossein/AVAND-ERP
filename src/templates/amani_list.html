@@ -12,7 +12,7 @@
   <a class="btn {{ '' if st=='all' else 's' }}" href="?status=all">همه</a>
   <span class="sp"></span>{% if can('amani') %}<a class="btn g" href="/amani/new">{{ icon('plus') }} صدور فاکتور امانی</a>{% endif %}</div>
 {% call period(f,t) %}<input type="hidden" name="status" value="{{ st }}">{{ vsel(visitors, vid) }}{% endcall %}
-<table><tr><th>شماره امانی</th><th>تاریخ</th><th>ویزیتور</th><th>انبار</th><th class="n">تعداد</th><th class="n">ارزش امانی</th><th>وضعیت</th><th class="no-print"></th></tr>
+<table><tr><th>شماره امانی</th><th>تاریخ</th><th>تحویل‌گیرنده</th><th>انبار</th><th class="n">تعداد</th><th class="n">ارزش امانی</th><th>وضعیت</th><th class="no-print"></th></tr>
 {% for c in rows %}<tr><td>{{ c.no }}</td><td>{{ c.date }}</td><td>{{ c.vname }}</td><td>{{ c.whname }}</td><td class="n">{{ c.qty|m }}</td><td class="n">{{ c.amani_value|m }}</td>
 <td>{% if c.status=='open' %}<span class="tag open">امانی باز</span>{% else %}<span class="tag ok">تسویه {{ c.settle_date }}</span>{% endif %}</td>
 <td class="no-print"><a class="btn sm s" href="/amani/{{ c.id }}">مشاهده</a>

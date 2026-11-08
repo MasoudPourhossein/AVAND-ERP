@@ -4,8 +4,8 @@ from jalali import (today_j, add_days, diff_days, week_start, month_start, year_
                     month_end, weekday, parts, WEEKDAYS, MONTHS)
 import export
 
-SL = "FROM sales_lines l JOIN sales_invoices s ON s.id=l.inv_id"
-DOC_LABEL = {"RES": "رسید انبار", "PUR": "فاکتور خرید", "PRT": "برگشت از خرید", "TRF": "حواله انبار", "AMN": "حواله امانی",
+SL = "FROM sales_lines l JOIN v_si s ON s.id=l.inv_id"
+DOC_LABEL = {"SRT": "برگشت از فروش", "RES": "رسید انبار", "PUR": "فاکتور خرید", "PRT": "برگشت از خرید", "TRF": "حواله انبار", "AMN": "حواله امانی",
              "MRJ": "برگشت مرجوعی", "FCT": "فاکتور فروش"}
 
 
@@ -25,12 +25,14 @@ def _f(col, val, w, a):
 
 # ---------------- aggregates
 def sales_agg(f, t, vid=None, cid=None):
+    """amount = net sales excl. VAT (returns deducted); total = invoices incl. VAT"""
     w, a = " WHERE s.date BETWEEN ? AND ?", [f, t]
     w, a = _f("s.visitor_id", vid, w, a)
     w, a = _f("s.customer_id", cid, w, a)
-    r = q(f"""SELECT COALESCE(SUM(l.qty*l.price),0) gross, COALESCE(SUM(l.qty),0) qty, COALESCE(SUM(l.qty*l.cost),0) cogs,
-              COUNT(DISTINCT s.id) inv {SL} {w}""", a, one=True)
-    disc = v1(f"SELECT SUM(s.discount) FROM sales_invoices s {w}", a)
+    r = q(f"""SELECT COALESCE(SUM(gross*sg),0) gross, COALESCE(SUM((ldisc+discount)*sg),0) disc, COALESCE(SUM(net_total*sg),0) amount,
+              COALESCE(SUM(vat_total*sg),0) vat, COALESCE(SUM(total*sg),0) total, COALESCE(SUM(qty_total*sg),0) qty,
+              COALESCE(SUM(cogs_total*sg),0) cogs, COUNT(*) FILTER (WHERE kind<>'return') inv,
+              COALESCE(SUM(net_total) FILTER (WHERE kind='return'),0) sret FROM v_si s {w}""", a, one=True)
     cw, ca = " WHERE c.status='settled' AND c.settle_date BETWEEN ? AND ?", [f, t]
     cw, ca = _f("c.visitor_id", vid, cw, ca)
     rr = q(f"SELECT COALESCE(SUM(l.returned),0) ret, COALESCE(SUM(l.returned*l.price),0) ret_val FROM cons_lines l JOIN consignments c ON c.id=l.cons_id {cw}",
@@ -40,22 +42,21 @@ def sales_agg(f, t, vid=None, cid=None):
     pw, pa = _f("s.customer_id", cid, pw, pa)
     p = q(f"""SELECT COALESCE(SUM(CASE WHEN method='pos' THEN amount END),0) pos, COALESCE(SUM(CASE WHEN method='cash' THEN amount END),0) cash
               FROM payments p JOIN sales_invoices s ON s.id=p.inv_id {pw}""", pa, one=True)
-    amount = r["gross"] - disc
-    return {"gross": r["gross"], "disc": disc, "amount": amount, "qty": r["qty"], "cogs": r["cogs"], "inv": r["inv"],
-            "ret": rr["ret"], "ret_val": rr["ret_val"], "pos": p["pos"], "cash": p["cash"], "coll": p["pos"] + p["cash"],
-            "profit": amount - r["cogs"]}
+    d = dict(r)
+    d.update(ret=rr["ret"], ret_val=rr["ret_val"], pos=p["pos"], cash=p["cash"], coll=p["pos"] + p["cash"], profit=r["amount"] - r["cogs"])
+    return d
 
 
 def daily_series(f, t):
-    rows = {r["d"]: r for r in q(f"SELECT s.date d, SUM(l.qty*l.price) g, SUM(l.qty) qty, COUNT(DISTINCT s.id) inv {SL} WHERE s.date BETWEEN ? AND ? GROUP BY s.date", (f, t))}
-    disc = {r["d"]: r["x"] for r in q("SELECT date d, SUM(discount) x FROM sales_invoices WHERE date BETWEEN ? AND ? GROUP BY date", (f, t))}
+    rows = {r["d"]: r for r in q("""SELECT date d, SUM(net_total*sg) amt, SUM(qty_total*sg) qty, COUNT(*) FILTER (WHERE kind<>'return') inv
+                                    FROM v_si WHERE date BETWEEN ? AND ? GROUP BY date""", (f, t))}
     rets = {r["d"]: r["x"] for r in q("""SELECT c.settle_date d, SUM(l.returned) x FROM cons_lines l JOIN consignments c ON c.id=l.cons_id
                                           WHERE c.status='settled' AND c.settle_date BETWEEN ? AND ? GROUP BY c.settle_date""", (f, t))}
     pays = {r["d"]: r["s"] for r in q("SELECT date d, SUM(amount) s FROM payments WHERE date BETWEEN ? AND ? GROUP BY date", (f, t))}
     out, d = [], f
     while d <= t:
         r = rows.get(d)
-        out.append({"d": d, "amount": (r["g"] if r else 0) - disc.get(d, 0), "qty": r["qty"] if r else 0, "ret": rets.get(d, 0),
+        out.append({"d": d, "amount": r["amt"] if r else 0, "qty": r["qty"] if r else 0, "ret": rets.get(d, 0),
                     "inv": r["inv"] if r else 0, "coll": pays.get(d, 0)})
         d = add_days(d, 1)
     return out
@@ -66,7 +67,7 @@ def receivable_until(t, pid=None, as_="customer", before=False):
     w, a = "", []
     if pid:
         w = f" AND s.{'visitor_id' if as_ == 'visitor' else 'customer_id'}=?"; a = [pid]
-    inv = v1(f"SELECT SUM(l.qty*l.price) {SL} WHERE s.date {op} ?{w}", [t] + a) - v1(f"SELECT SUM(s.discount) FROM sales_invoices s WHERE s.date {op} ?{w}", [t] + a)
+    inv = v1(f"SELECT SUM(total*sg) FROM v_si s WHERE s.date {op} ?{w}", [t] + a)
     pay = v1(f"SELECT SUM(p.amount) FROM payments p JOIN sales_invoices s ON s.id=p.inv_id WHERE p.date {op} ?{w}", [t] + a)
     return inv - pay
 
@@ -74,8 +75,7 @@ def receivable_until(t, pid=None, as_="customer", before=False):
 def payable_until(t, pid=None, before=False):
     op = "<" if before else "<="
     w, a = ("", []) if not pid else (" AND u.supplier_id=?", [pid])
-    return v1(f"""SELECT SUM(CASE WHEN u.kind='return' THEN -1 ELSE 1 END*((SELECT COALESCE(SUM(qty*price),0) FROM purchase_lines WHERE pur_id=u.id)-u.discount))
-                  FROM purchases u WHERE u.date {op} ?{w}""", [t] + a)
+    return v1(f"SELECT SUM(total*sg) FROM v_pu u WHERE u.date {op} ?{w}", [t] + a)
 
 
 def compare_periods():
@@ -92,7 +92,7 @@ def compare_periods():
 def unpaid_invoices(t=None):
     t = t or today_j()
     out = []
-    for r in q(INV_SQL + " ORDER BY s.date, s.no"):
+    for r in q(INV_SQL + " WHERE s.kind<>'return' ORDER BY s.date, s.no"):
         rem = r["total"] - r["pos"] - r["cash"]
         if rem > 0:
             out.append({"id": r["id"], "no": r["no"], "date": r["date"], "c": r["cname"], "v": r["vname"] or "", "vcode": r["vcode"],
@@ -236,18 +236,22 @@ def rep_sales():
     w, a = _f("s.visitor_id", vid, w, a)
     w, a = _f("s.customer_id", cid, w, a)
     w, a = _f("s.wh_id", wid, w, a)
-    rows = q(f"""SELECT s.id sid, s.no, s.date, cu.name cname, v.name vname, i.code, i.name, i.pack, i.unit, i.pack_unit, l.qty, l.price, l.qty*l.price amount
+    rows = q(f"""SELECT s.id sid, s.no, s.date, s.kind, cu.name cname, v.name vname, i.code, i.name, i.pack, i.unit, i.pack_unit, l.qty*s.sg qty, l.price,
+                 (l.qty*l.price-l.disc)*s.sg amount, l.vat*s.sg vat
                  {SL} JOIN persons cu ON cu.id=s.customer_id LEFT JOIN persons v ON v.id=s.visitor_id JOIN items i ON i.id=l.item_id
                  {w} ORDER BY s.date, s.no, i.code""", a)
-    data = [[link(r["no"], url_for("invoice", iid=r["sid"])), r["date"], r["cname"], r["vname"] or "", r["code"], r["name"], r["qty"], pkr(r["qty"], r),
-             r["price"], r["amount"]] for r in rows]
-    disc = v1(f"SELECT SUM(s.discount) FROM sales_invoices s {w}", a)
+    data = [[link(r["no"], url_for("invoice", iid=r["sid"]), "bad" if r["kind"] == "return" else None), r["date"], r["cname"], r["vname"] or "",
+             r["code"], r["name"], r["qty"], pkr(r["qty"], r), r["price"], r["amount"], r["vat"]] for r in rows]
+    disc = v1(f"SELECT SUM(s.discount*s.sg) FROM v_si s {w}", a)
     sub = f"از {f} تا {t}" + (f" | ویزیتور: {_pname(vid)}" if vid else "") + (f" | مشتری: {_pname(cid)}" if cid else "") + (f" | انبار: {_whname(wid)}" if wid else "")
     spec = {"title": "گزارش ریز فروش", "sub": sub, "filters": ["period", "visitor", "customer", "wh"],
-            "kpis": [("جمع ناخالص", sum(r["amount"] for r in rows), "money"), ("تخفیف", disc, "money"), ("فروش خالص", sum(r["amount"] for r in rows) - disc, "money")],
+            "kpis": [("جمع اقلام (پس از تخفیف ردیف)", sum(r["amount"] for r in rows), "money"), ("تخفیف نهایی", disc, "money"),
+                     ("فروش خالص", sum(r["amount"] for r in rows) - disc, "money"), ("مالیات ارزش افزوده", sum(r["vat"] for r in rows), "money")],
             "sections": [{"cols": [("فاکتور", "text"), ("تاریخ", "text"), ("مشتری", "text"), ("ویزیتور", "text"), ("کد", "text"), ("کالا", "text"),
-                                   ("تعداد", "num"), ("تعداد (کارتن)", "text"), ("نرخ", "money"), ("مبلغ (ریال)", "money")],
-                          "rows": data, "total": ["جمع", "", "", "", "", "", sum(r["qty"] for r in rows), "", "", sum(r["amount"] for r in rows)]}]}
+                                   ("تعداد", "num"), ("تعداد (کارتن)", "text"), ("نرخ", "money"), ("مبلغ پس از تخفیف", "money"), ("مالیات", "money")],
+                          "rows": data, "total": ["جمع", "", "", "", "", "", sum(r["qty"] for r in rows), "", "", sum(r["amount"] for r in rows),
+                                                  sum(r["vat"] for r in rows)]}],
+            "note": "برگشت از فروش با علامت منفی آمده است."}
     return export.out(spec, visitors=_visitors(), customers=_customers(), whs=warehouses_list(False))
 
 
@@ -299,17 +303,13 @@ def rep_customers():
     vid = to_int(request.args.get("visitor"))
     w, a = " WHERE s.date BETWEEN ? AND ?", [f, t]
     w, a = _f("s.visitor_id", vid, w, a)
-    rows = q(f"""SELECT cu.id, cu.code, cu.name, v.name vname, COUNT(DISTINCT s.id) inv, SUM(l.qty) qty, SUM(l.qty*l.price) gross
-                 {SL} JOIN persons cu ON cu.id=s.customer_id LEFT JOIN persons v ON v.id=cu.visitor_id {w}
-                 GROUP BY cu.id, cu.code, cu.name, v.name ORDER BY gross DESC""", a)
-    data = []
-    for r in rows:
-        disc = v1("SELECT SUM(discount) FROM sales_invoices s WHERE s.customer_id=? AND s.date BETWEEN ? AND ?" + (" AND s.visitor_id=?" if vid else ""),
-                  [r["id"], f, t] + ([vid] if vid else []))
-        data.append([r["code"], link(r["name"], url_for("fin_statement", person=r["id"], **{"as": "customer"})), r["vname"] or "", r["inv"], r["qty"],
-                     r["gross"] - disc, receivable_until(t, r["id"])])
+    rows = q(f"""SELECT cu.id, cu.code, cu.name, v.name vname, COUNT(*) FILTER (WHERE s.kind<>'return') inv, SUM(s.qty_total*s.sg) qty,
+                 SUM(s.net_total*s.sg) net FROM v_si s JOIN persons cu ON cu.id=s.customer_id LEFT JOIN persons v ON v.id=cu.visitor_id {w}
+                 GROUP BY cu.id, cu.code, cu.name, v.name ORDER BY net DESC""", a)
+    data = [[r["code"], link(r["name"], url_for("fin_statement", person=r["id"], **{"as": "customer"})), r["vname"] or "", r["inv"], r["qty"],
+             r["net"], receivable_until(t, r["id"])] for r in rows]
     spec = {"title": "فروش به تفکیک مشتری", "sub": f"از {f} تا {t}" + (f" | ویزیتور: {_pname(vid)}" if vid else ""), "filters": ["period", "visitor"],
-            "sections": [{"cols": [("کد", "text"), ("مشتری", "text"), ("ویزیتور مسئول", "text"), ("فاکتور", "num"), ("تعداد", "num"), ("فروش خالص", "money"),
+            "sections": [{"cols": [("کد", "text"), ("مشتری", "text"), ("ویزیتور مسئول", "text"), ("فاکتور", "num"), ("تعداد", "num"), ("فروش خالص (بدون مالیات)", "money"),
                                    ("مانده فعلی", "money")], "rows": data, "total": ["جمع", "", ""] + [sum(r[i] for r in data) for i in range(3, 7)]}]}
     return export.out(spec, visitors=_visitors())
 
@@ -340,7 +340,7 @@ def rep_stock():
 def _doc_link(m):
     t, d, no = m["doc_type"], m["doc_id"], m["doc_no"]
     url = {"RES": ("receipt_view", "rid"), "PUR": ("purchase_view", "pid"), "TRF": ("transfer_view", "tid"), "AMN": ("amani_view", "cid"),
-           "MRJ": ("print_return", "cid"), "FCT": ("invoice", "iid")}.get(t)
+           "MRJ": ("print_return", "cid"), "FCT": ("invoice", "iid"), "SRT": ("invoice", "iid")}.get(t)
     return link(no or "", url_for(url[0], **{url[1]: d}) if url else None)
 
 
@@ -363,6 +363,7 @@ def rep_kardex():
                           WHEN 'AMN' THEN (SELECT p.name FROM consignments c JOIN persons p ON p.id=c.visitor_id WHERE c.id=m.doc_id)
                           WHEN 'MRJ' THEN (SELECT p.name FROM consignments c JOIN persons p ON p.id=c.visitor_id WHERE c.id=m.doc_id)
                           WHEN 'FCT' THEN (SELECT p.name FROM sales_invoices s JOIN persons p ON p.id=s.customer_id WHERE s.id=m.doc_id)
+                          WHEN 'SRT' THEN (SELECT p.name FROM sales_invoices s JOIN persons p ON p.id=s.customer_id WHERE s.id=m.doc_id)
                           WHEN 'RES' THEN (SELECT note FROM receipts WHERE id=m.doc_id) ELSE '' END AS party,
                         (SELECT kind FROM purchases WHERE id=m.doc_id AND m.doc_type='PUR') AS pkind
                         FROM stock_moves m JOIN warehouses w ON w.id=m.wh_id {w} AND m.date BETWEEN ? AND ? ORDER BY m.date, m.id""", a + [f, t]):
@@ -389,20 +390,20 @@ def rep_items():
     for r in q(f"""SELECT m.item_id, m.doc_type, SUM(m.qty) s FROM stock_moves m WHERE m.date BETWEEN ? AND ?{wf} GROUP BY m.item_id, m.doc_type""",
                [f, t] + ([wid] if wid else [])):
         mv.setdefault(r["item_id"], {})[r["doc_type"]] = r["s"]
-    sales = {r["item_id"]: r for r in q(f"""SELECT l.item_id, SUM(l.qty) qty, SUM(l.qty*l.price) amt {SL} WHERE s.date BETWEEN ? AND ?
+    sales = {r["item_id"]: r for r in q(f"""SELECT l.item_id, SUM(l.qty*s.sg) qty, SUM((l.qty*l.price-l.disc)*s.sg) amt {SL} WHERE s.date BETWEEN ? AND ?
                                            {' AND s.wh_id=?' if wid else ''} GROUP BY l.item_id""", [f, t] + ([wid] if wid else []))}
     data = []
     for i in _items():
         m, sv, s_ = mv.get(i["id"], {}), sales.get(i["id"]), st[i["id"]]
         data.append([i["code"], link(i["name"], url_for("rep_kardex", item=i["id"], wh=wid or "", **{"from": f, "to": t})),
-                     m.get("RES", 0), m.get("PUR", 0), m.get("TRF", 0), -m.get("AMN", 0), m.get("MRJ", 0), -m.get("FCT", 0),
+                     m.get("RES", 0), m.get("PUR", 0), m.get("TRF", 0), -m.get("AMN", 0), m.get("MRJ", 0), -m.get("FCT", 0), m.get("SRT", 0),
                      sv["qty"] if sv else 0, sv["amt"] if sv else 0, s_["st"], s_["open_amani"]])
-    data = [d for d in data if any(d[k] for k in range(2, 12))]
+    data = [d for d in data if any(d[k] for k in range(2, 13))]
     spec = {"title": "گردش کالا به کالا", "sub": f"از {f} تا {t}" + (f" | انبار: {_whname(wid)}" if wid else ""), "filters": ["period", "wh"],
             "sections": [{"cols": [("کد", "text"), ("کالا", "text"), ("رسید", "num"), ("خرید خالص", "num"), ("حواله (±)", "num"), ("تحویل امانی", "num"),
-                                   ("مرجوعی", "num"), ("فروش مستقیم", "num"), ("کل فروش (تعداد)", "num"), ("کل فروش (ریال)", "money"),
-                                   ("موجودی فعلی", "num"), ("امانی باز", "num")],
-                          "rows": data, "total": ["جمع", ""] + [sum(r[i] for r in data) for i in range(2, 12)]}]}
+                                   ("مرجوعی", "num"), ("فروش مستقیم", "num"), ("برگشت از فروش", "num"), ("کل فروش خالص (تعداد)", "num"),
+                                   ("کل فروش (ریال، بدون مالیات)", "money"), ("موجودی فعلی", "num"), ("امانی باز", "num")],
+                          "rows": data, "total": ["جمع", ""] + [sum(r[i] for r in data) for i in range(2, 13)]}]}
     return export.out(spec, whs=warehouses_list(False))
 
 
@@ -438,18 +439,19 @@ def rep_purchases():
     sid = to_int(request.args.get("supplier"))
     w, a = " WHERE u.date BETWEEN ? AND ?", [f, t]
     w, a = _f("u.supplier_id", sid, w, a)
-    rows = q(f"""SELECT u.id, u.no, u.kind, u.date, s.name sname, i.code, i.name, i.pack, i.unit, i.pack_unit, l.qty, l.price, l.qty*l.price amount
+    rows = q(f"""SELECT u.id, u.no, u.kind, u.date, s.name sname, i.code, i.name, i.pack, i.unit, i.pack_unit, l.qty, l.price, l.qty*l.price-l.disc amount, l.vat
                  FROM purchase_lines l JOIN purchases u ON u.id=l.pur_id JOIN persons s ON s.id=u.supplier_id JOIN items i ON i.id=l.item_id
                  {w} ORDER BY u.date, u.no, i.code""", a)
     sg = lambda r: -1 if r["kind"] == "return" else 1
     data = [[link(r["no"], url_for("purchase_view", pid=r["id"])), "برگشت" if r["kind"] == "return" else "خرید", r["date"], r["sname"], r["code"], r["name"],
-             sg(r) * r["qty"], pkr(r["qty"], r), r["price"], sg(r) * r["amount"]] for r in rows]
+             sg(r) * r["qty"], pkr(r["qty"], r), r["price"], sg(r) * r["amount"], sg(r) * r["vat"]] for r in rows]
     disc = v1(f"SELECT SUM(CASE WHEN u.kind='return' THEN -u.discount ELSE u.discount END) FROM purchases u {w}", a)
     spec = {"title": "گزارش خرید", "sub": f"از {f} تا {t}" + (f" | تامین‌کننده: {_pname(sid)}" if sid else ""), "filters": ["period", "supplier"],
-            "kpis": [("جمع خالص اقلام", sum(d[9] for d in data), "money"), ("تخفیف", disc, "money"), ("خرید خالص", sum(d[9] for d in data) - disc, "money")],
+            "kpis": [("جمع اقلام (پس از تخفیف ردیف)", sum(d[9] for d in data), "money"), ("تخفیف نهایی", disc, "money"),
+                     ("خرید خالص", sum(d[9] for d in data) - disc, "money"), ("مالیات خرید", sum(d[10] for d in data), "money")],
             "sections": [{"cols": [("شماره", "text"), ("نوع", "text"), ("تاریخ", "text"), ("تامین‌کننده", "text"), ("کد", "text"), ("کالا", "text"),
-                                   ("تعداد", "num"), ("تعداد (کارتن)", "text"), ("نرخ", "money"), ("مبلغ", "money")],
-                          "rows": data, "total": ["جمع", "", "", "", "", "", sum(d[6] for d in data), "", "", sum(d[9] for d in data)]}]}
+                                   ("تعداد", "num"), ("تعداد (کارتن)", "text"), ("نرخ", "money"), ("مبلغ پس از تخفیف", "money"), ("مالیات", "money")],
+                          "rows": data, "total": ["جمع", "", "", "", "", "", sum(d[6] for d in data), "", "", sum(d[9] for d in data), sum(d[10] for d in data)]}]}
     return export.out(spec, suppliers=q("SELECT id, code, name FROM persons WHERE is_supplier=1 ORDER BY code"))
 
 
@@ -465,13 +467,17 @@ def fin_summary():
     p0, p1 = payable_until(f, before=True), payable_until(t)
     purchases = payable_until(t) - payable_until(f, before=True)
     margin = round(s["profit"] * 100.0 / s["amount"], 1) if s["amount"] else 0
-    rows1 = [["فروش ناخالص", s["gross"]], ["کسر می‌شود: تخفیفات فروش", -s["disc"]], ["فروش خالص", s["amount"]],
+    pv = q("SELECT COALESCE(SUM(vat_total*sg),0) v, COALESCE(SUM(net_total*sg),0) n FROM v_pu WHERE date BETWEEN ? AND ?", (f, t), one=True)
+    rows1 = [["فروش ناخالص (پس از کسر برگشت از فروش)", s["gross"]], ["کسر می‌شود: تخفیفات فروش", -s["disc"]], ["فروش خالص", s["amount"]],
              ["کسر می‌شود: بهای تمام‌شده کالای فروش‌رفته", -s["cogs"]], ["سود ناخالص", s["profit"]], [f"حاشیه سود ناخالص: {margin}%", None],
              ["(اطلاعات) ارزش کالای مرجوعی امانی در دوره", s["ret_val"]]]
     rows2 = [["مانده مطالبات از مشتریان ابتدای دوره", r0], ["اضافه می‌شود: فروش خالص دوره", s["amount"]],
+             ["اضافه می‌شود: مالیات ارزش افزوده فروش", s["vat"]],
              ["کسر می‌شود: وصولی کارت‌خوان (پوز)", -s["pos"]], ["کسر می‌شود: وصولی نقد", -s["cash"]], ["مانده مطالبات پایان دوره", r1]]
     rows3 = [["مانده بدهی به تامین‌کنندگان ابتدای دوره", p0], ["اضافه می‌شود: خرید خالص دوره", purchases],
              ["کسر می‌شود: پرداخت‌ها (فاز ۲ — خزانه)", 0], ["مانده بدهی پایان دوره", p1]]
+    rows5 = [["مالیات و عوارض فروش (دریافتی از مشتریان)", s["vat"]], ["کسر می‌شود: مالیات و عوارض خرید", -pv["v"]],
+             ["مالیات ارزش افزوده پرداختنی دوره", s["vat"] - pv["v"]]]
     rows4 = [["موجودی کالای انبارها (بهای خرید)", inv_cost], ["کالای امانی نزد ویزیتورها (بهای خرید)", amani_cost], ["جمع موجودی کالا", inv_cost + amani_cost]]
     spec = {"title": "خلاصه وضعیت مالی", "sub": f"از {f} تا {t}", "filters": ["period"],
             "kpis": [("فروش خالص", s["amount"], "money"), ("سود ناخالص", s["profit"], "money"), ("وصولی دوره", s["coll"], "money"),
@@ -479,6 +485,7 @@ def fin_summary():
             "sections": [{"title": "صورت سود ناخالص", "cols": [("شرح", "text"), ("مبلغ (ریال)", "money")], "rows": rows1},
                          {"title": "حساب‌های دریافتنی (مشتریان)", "cols": [("شرح", "text"), ("مبلغ (ریال)", "money")], "rows": rows2},
                          {"title": "حساب‌های پرداختنی (تامین‌کنندگان)", "cols": [("شرح", "text"), ("مبلغ (ریال)", "money")], "rows": rows3},
+                         {"title": "مالیات و عوارض ارزش افزوده", "cols": [("شرح", "text"), ("مبلغ (ریال)", "money")], "rows": rows5},
                          {"title": "موجودی کالا", "cols": [("شرح", "text"), ("مبلغ (ریال)", "money")], "rows": rows4}],
             "note": "بهای تمام‌شده = تعداد فروش × نرخ خرید کالا در تاریخ فاکتور (ثبت‌شده روی فاکتور). ارزش موجودی به نرخ خرید فعلی."}
     return export.out(spec)
@@ -490,8 +497,9 @@ def fin_trial():
     cust_rows, sup_rows = [], []
     for p in q("SELECT id, code, name FROM persons WHERE is_customer=1 ORDER BY code"):
         op = receivable_until(f, p["id"], before=True)
-        dr = receivable_until(t, p["id"]) - op + v1("SELECT SUM(p.amount) FROM payments p JOIN sales_invoices s ON s.id=p.inv_id WHERE s.customer_id=? AND p.date BETWEEN ? AND ?", (p["id"], f, t))
-        cr = v1("SELECT SUM(p.amount) FROM payments p JOIN sales_invoices s ON s.id=p.inv_id WHERE s.customer_id=? AND p.date BETWEEN ? AND ?", (p["id"], f, t))
+        dr = v1("SELECT SUM(total) FROM v_si WHERE customer_id=? AND kind<>'return' AND date BETWEEN ? AND ?", (p["id"], f, t))
+        cr = v1("SELECT SUM(p.amount) FROM payments p JOIN sales_invoices s ON s.id=p.inv_id WHERE s.customer_id=? AND p.date BETWEEN ? AND ?", (p["id"], f, t)) \
+            + v1("SELECT SUM(total) FROM v_si WHERE customer_id=? AND kind='return' AND date BETWEEN ? AND ?", (p["id"], f, t))
         cl = op + dr - cr
         if op or dr or cr:
             cust_rows.append([p["code"], link(p["name"], url_for("fin_statement", person=p["id"], **{"as": "customer", "from": f, "to": t})), op, dr, cr,
@@ -524,8 +532,7 @@ def fin_statement():
     ent = []
     if as_ == "supplier":
         bal = payable_until(f, pid, before=True)
-        for u in q("""SELECT u.*, (SELECT COALESCE(SUM(qty*price),0) FROM purchase_lines WHERE pur_id=u.id)-u.discount total FROM purchases u
-                      WHERE u.supplier_id=? AND u.date BETWEEN ? AND ? ORDER BY u.date, u.no""", (pid, f, t)):
+        for u in q("SELECT * FROM v_pu u WHERE u.supplier_id=? AND u.date BETWEEN ? AND ? ORDER BY u.date, u.no", (pid, f, t)):
             ret = u["kind"] == "return"
             ent.append((u["date"], link(f"{'برگشت از خرید' if ret else 'فاکتور خرید'} {u['no']}", url_for("purchase_view", pid=u["id"])),
                         u["ref_no"] or "", "", u["total"] if ret else 0, 0 if ret else u["total"]))
@@ -539,9 +546,10 @@ def fin_statement():
         col = "visitor_id" if as_ == "visitor" else "customer_id"
         bal = receivable_until(f, pid, as_, before=True)
         for r in q(INV_SQL + f" WHERE s.{col}=? AND s.date BETWEEN ? AND ? ORDER BY s.date, s.no", (pid, f, t)):
-            ent.append((r["date"], 0, link(f"فاکتور فروش {r['no']}", url_for("invoice", iid=r["id"])),
+            ret = r["kind"] == "return"
+            ent.append((r["date"], 0, link(f"{'برگشت از فروش' if ret else 'فاکتور فروش'} {r['no']}", url_for("invoice", iid=r["id"])),
                         r["cname"] if as_ == "visitor" else (r["vname"] or ""), f"{r['sold_qty']:,} واحد" + (f" / امانی {r['cons_no']}" if r["cons_no"] else ""),
-                        r["total"], 0))
+                        0 if ret else r["total"], r["total"] if ret else 0))
         for p in q(f"""SELECT p.*, s.no ino, s.id sid, cu.name cname FROM payments p JOIN sales_invoices s ON s.id=p.inv_id JOIN persons cu ON cu.id=s.customer_id
                        WHERE s.{col}=? AND p.date BETWEEN ? AND ?""", (pid, f, t)):
             ent.append((p["date"], 1, link(f"سند دریافت {p['no']}", url_for("invoice", iid=p["sid"])), p["cname"] if as_ == "visitor" else "",
@@ -660,12 +668,12 @@ def fin_profit():
     f, t = period()
 
     def grp(key_sql, name_sql, join=""):
-        return q(f"""SELECT {key_sql} k, {name_sql} n, SUM(l.qty) qty, SUM(l.qty*l.price) sales, SUM(l.qty*l.cost) cogs
+        return q(f"""SELECT {key_sql} k, {name_sql} n, SUM(l.qty*s.sg) qty, SUM((l.qty*l.price-l.disc)*s.sg) sales, SUM(l.qty*l.cost*s.sg) cogs
                      {SL} {join} WHERE s.date BETWEEN ? AND ? GROUP BY 1, 2 ORDER BY sales DESC""", (f, t))
     by_item = grp("i.code", "i.name", "JOIN items i ON i.id=l.item_id")
     by_v = grp("COALESCE(v.code,'-')", "COALESCE(v.name,'بدون ویزیتور')", "LEFT JOIN persons v ON v.id=s.visitor_id")
     by_c = grp("c.code", "c.name", "JOIN persons c ON c.id=s.customer_id")
-    disc = v1("SELECT SUM(discount) FROM sales_invoices WHERE date BETWEEN ? AND ?", (f, t))
+    disc = v1("SELECT SUM(discount*sg) FROM v_si WHERE date BETWEEN ? AND ?", (f, t))
 
     def mg(s, c):
         return f"{round((s - c) * 100.0 / s, 1)}%" if s else "—"
@@ -677,7 +685,7 @@ def fin_profit():
                 "rows": [[r["k"], r["n"], r["qty"], r["sales"], r["cogs"], r["sales"] - r["cogs"], mg(r["sales"], r["cogs"])] for r in R],
                 "total": ["جمع", "", sum(r["qty"] for r in R), S, C, S - C, mg(S, C)]}
     spec = {"title": "سود ناخالص فروش", "sub": f"از {f} تا {t}", "filters": ["period"],
-            "kpis": [("فروش (قبل از تخفیف)", S, "money"), ("تخفیفات", disc, "money"), ("بهای تمام‌شده", C, "money"), ("سود ناخالص (پس از تخفیف)", S - disc - C, "money")],
+            "kpis": [("فروش (پس از تخفیف ردیف، بدون مالیات)", S, "money"), ("تخفیف نهایی فاکتورها", disc, "money"), ("بهای تمام‌شده", C, "money"), ("سود ناخالص (پس از تخفیف)", S - disc - C, "money")],
             "sections": [sec("به تفکیک کالا", "کالا", by_item), sec("به تفکیک ویزیتور", "ویزیتور", by_v), sec("به تفکیک مشتری", "مشتری", by_c)],
             "note": "سود ناخالص = مبلغ فروش − (تعداد فروش × نرخ خرید کالا در تاریخ فاکتور). تخفیف کل فاکتورها در جمع نهایی کسر شده است."}
     return export.out(spec)

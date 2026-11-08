@@ -103,3 +103,42 @@ CREATE TABLE IF NOT EXISTS payments(  -- دریافت بابت فاکتور فر
   method TEXT NOT NULL, amount BIGINT NOT NULL, ref TEXT, created_by INT);
 CREATE INDEX IF NOT EXISTS ix_pay_inv ON payments(inv_id);
 CREATE INDEX IF NOT EXISTS ix_pay_date ON payments(date);
+
+-- ---------- v2: standard invoices (line discount + VAT), sales return, seller/buyer info
+ALTER TABLE sales_lines ADD COLUMN IF NOT EXISTS disc BIGINT NOT NULL DEFAULT 0;
+ALTER TABLE sales_lines ADD COLUMN IF NOT EXISTS vat_rate DOUBLE PRECISION NOT NULL DEFAULT 0;
+ALTER TABLE sales_lines ADD COLUMN IF NOT EXISTS vat BIGINT NOT NULL DEFAULT 0;
+ALTER TABLE purchase_lines ADD COLUMN IF NOT EXISTS disc BIGINT NOT NULL DEFAULT 0;
+ALTER TABLE purchase_lines ADD COLUMN IF NOT EXISTS vat_rate DOUBLE PRECISION NOT NULL DEFAULT 0;
+ALTER TABLE purchase_lines ADD COLUMN IF NOT EXISTS vat BIGINT NOT NULL DEFAULT 0;
+ALTER TABLE sales_invoices ADD COLUMN IF NOT EXISTS due_date TEXT;
+ALTER TABLE sales_invoices ADD COLUMN IF NOT EXISTS pay_terms TEXT;
+ALTER TABLE sales_invoices ADD COLUMN IF NOT EXISTS ref_no TEXT;
+ALTER TABLE sales_invoices ADD COLUMN IF NOT EXISTS ret_of INT REFERENCES sales_invoices(id) ON DELETE SET NULL;
+ALTER TABLE sales_invoices ADD COLUMN IF NOT EXISTS updated_by INT;
+ALTER TABLE purchases ADD COLUMN IF NOT EXISTS due_date TEXT;
+ALTER TABLE purchases ADD COLUMN IF NOT EXISTS pay_terms TEXT;
+ALTER TABLE purchases ADD COLUMN IF NOT EXISTS updated_by INT;
+ALTER TABLE items ADD COLUMN IF NOT EXISTS vat_rate DOUBLE PRECISION;
+ALTER TABLE persons ADD COLUMN IF NOT EXISTS ptype TEXT NOT NULL DEFAULT 'real';
+ALTER TABLE persons ADD COLUMN IF NOT EXISTS postal_code TEXT;
+ALTER TABLE persons ADD COLUMN IF NOT EXISTS reg_no TEXT;
+
+-- invoice-level totals (views are rebuilt on every start so new columns appear)
+DROP VIEW IF EXISTS v_si;
+CREATE VIEW v_si AS
+SELECT s.*, CASE WHEN s.kind='return' THEN -1 ELSE 1 END AS sg,
+  COALESCE(t.gross,0) AS gross, COALESCE(t.ldisc,0) AS ldisc, COALESCE(t.vat,0) AS vat_total, COALESCE(t.qty,0) AS qty_total,
+  COALESCE(t.cogs,0) AS cogs_total, COALESCE(t.gross,0)-COALESCE(t.ldisc,0)-s.discount AS net_total,
+  COALESCE(t.gross,0)-COALESCE(t.ldisc,0)+COALESCE(t.vat,0)-s.discount AS total
+FROM sales_invoices s LEFT JOIN (SELECT inv_id, SUM(qty*price) gross, SUM(disc) ldisc, SUM(vat) vat, SUM(qty) qty, SUM(qty*cost) cogs
+  FROM sales_lines GROUP BY inv_id) t ON t.inv_id=s.id;
+
+DROP VIEW IF EXISTS v_pu;
+CREATE VIEW v_pu AS
+SELECT u.*, CASE WHEN u.kind='return' THEN -1 ELSE 1 END AS sg,
+  COALESCE(t.gross,0) AS gross, COALESCE(t.ldisc,0) AS ldisc, COALESCE(t.vat,0) AS vat_total, COALESCE(t.qty,0) AS qty_total,
+  COALESCE(t.gross,0)-COALESCE(t.ldisc,0)-u.discount AS net_total,
+  COALESCE(t.gross,0)-COALESCE(t.ldisc,0)+COALESCE(t.vat,0)-u.discount AS total
+FROM purchases u LEFT JOIN (SELECT pur_id, SUM(qty*price) gross, SUM(disc) ldisc, SUM(vat) vat, SUM(qty) qty
+  FROM purchase_lines GROUP BY pur_id) t ON t.pur_id=u.id;

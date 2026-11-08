@@ -1,18 +1,21 @@
-{% extends "base.html" %}{% from "_m.html" import icon %}{% block h %}فاکتور فروش {{ c.no }} - {{ c.cname }}{% endblock %}
+{% extends "base.html" %}{% from "_m.html" import icon %}{% block h %}{{ 'برگشت از فروش' if c.kind=='return' else 'فاکتور فروش' }} {{ c.no }} - {{ c.cname }}{% endblock %}
 {% block body %}
 {% set s=inv_status(c) %}{% set diff=c.total-c.pos-c.cash %}
 <div class="grid g4 kpis mb">
- <div class="kpi" style="--c:#4f46e5"><span>مبلغ فاکتور</span><b>{{ c.total|m }}</b>{% if c.discount %}<small>تخفیف: {{ c.discount|m }}</small>{% endif %}</div>
+ <div class="kpi" style="--c:#4f46e5"><span>مبلغ قابل پرداخت</span><b>{{ c.total|m }}</b><small>تخفیف: {{ (c.ldisc + c.discount)|m }} • مالیات: {{ c.vat_total|m }}</small></div>
  <div class="kpi" style="--c:#0891b2"><span>دریافتی پوز</span><b>{{ c.pos|m }}</b></div>
  <div class="kpi" style="--c:#059669"><span>دریافتی نقد</span><b>{{ c.cash|m }}</b></div>
  <div class="kpi" style="--c:{{ '#059669' if diff==0 else '#dc2626' }}"><span>مانده ({{ s[0] }})</span><b>{{ diff|m }}</b></div>
 </div>
-<div class="bar"><a class="btn" href="/print/invoice/{{ c.id }}">{{ icon('printer') }} چاپ فاکتور</a><a class="btn s" href="/print/invoice/{{ c.id }}?fmt=pdf">PDF</a>
+<div class="bar"><a class="btn" href="/print/invoice/{{ c.id }}">{{ icon('printer') }} چاپ فاکتور رسمی</a><a class="btn s" href="/print/invoice/{{ c.id }}?fmt=pdf">PDF</a>
+{% if can('void') and c.kind != 'consign' %}<a class="btn s" href="/sales/{{ c.id }}/edit">ویرایش</a>{% endif %}
+{% if can('sale') and c.kind != 'return' %}<a class="btn o" href="/sales/return/new?of={{ c.id }}">{{ icon('undo-2') }} برگشت از فروش</a>{% endif %}
+{% if c.ret_of %}<a class="btn s" href="/invoices/{{ c.ret_of }}">فاکتور مرجع {{ c.ret_of_no }}</a>{% endif %}
 {% if c.cons_id %}<a class="btn s" href="/amani/{{ c.cons_id }}">امانی {{ c.cons_no }}</a>{% if c.return_no %}<a class="btn s" href="/print/return/{{ c.cons_id }}">مرجوعی {{ c.return_no }}</a>{% endif %}{% endif %}
 <a class="btn s" href="/persons/{{ c.customer_id }}">مشتری: {{ c.cname }}</a>{% if c.visitor_id %}<a class="btn s" href="/persons/{{ c.visitor_id }}">ویزیتور: {{ c.vname }}</a>{% endif %}
 <span class="sp"></span>{% if can('users') %}<a class="btn r" href="/invoices/{{ c.id }}/remove">ابطال / حذف</a>{% endif %}</div>
 <div class="grid g2">
-{% if can("payment") %}<div class="card"><h3>{{ icon('credit-card') }} ثبت دریافتی (هر کارت‌کشیدن یک ردیف)</h3>
+{% if can("payment") and c.kind != 'return' %}<div class="card"><h3>{{ icon('credit-card') }} ثبت دریافتی (هر کارت‌کشیدن یک ردیف)</h3>
 <form method="post" class="f">
  <div><label>نوع</label><select name="method"><option value="pos">کارت‌خوان (پوز)</option><option value="cash">نقد</option></select></div>
  <div><label>مبلغ (ریال)</label><input name="amount" type="number" min="1" value="{{ diff if diff>0 else '' }}" required></div>
@@ -26,7 +29,10 @@
 {% else %}<tr><td colspan="7" class="muted">دریافتی ثبت نشده است.</td></tr>{% endfor %}</table></div>
 </div>
 <div class="card"><h3>اقلام فاکتور — تاریخ {{ c.date }} — انبار {{ c.whname }}</h3>
-<table><tr><th>کد</th><th>کالا</th><th>تعداد</th><th class="n">نرخ</th><th class="n">مبلغ</th></tr>
-{% for l in lines %}<tr><td>{{ l.code }}</td><td>{{ l.name }}</td><td>{{ pkr(l.qty, l) }}</td><td class="n">{{ l.price|m }}</td><td class="n">{{ (l.qty*l.price)|m }}</td></tr>{% endfor %}
-<tfoot><tr><td colspan="2">جمع</td><td class="n">{{ c.sold_qty|m }}</td><td></td><td class="n">{{ (c.total + c.discount)|m }}</td></tr></tfoot></table></div>
+<table><tr><th>کد</th><th>کالا</th><th>تعداد</th><th class="n">نرخ</th><th class="n">مبلغ</th><th class="n">تخفیف</th><th class="n">مالیات</th><th class="n">جمع</th></tr>
+{% for l in lines %}<tr><td>{{ l.code }}</td><td>{{ l.name }}</td><td>{{ pkr(l.qty, l) }}</td><td class="n">{{ l.price|m }}</td><td class="n">{{ (l.qty*l.price)|m }}</td>
+<td class="n">{{ l.disc|m }}</td><td class="n">{{ l.vat|m }}{% if l.vat_rate %} <small class="muted">({{ l.vat_rate|round(1) }}%)</small>{% endif %}</td><td class="n">{{ (l.qty*l.price - l.disc + l.vat)|m }}</td></tr>{% endfor %}
+<tfoot><tr><td colspan="2">جمع</td><td class="n">{{ c.sold_qty|m }}</td><td></td><td class="n">{{ c.gross|m }}</td><td class="n">{{ c.ldisc|m }}</td><td class="n">{{ c.vat_total|m }}</td><td class="n">{{ (c.gross-c.ldisc+c.vat_total)|m }}</td></tr>
+{% if c.discount %}<tr><td colspan="7">تخفیف نهایی</td><td class="n">{{ c.discount|m }}</td></tr>{% endif %}
+<tr><td colspan="7"><b>قابل پرداخت</b></td><td class="n"><b>{{ c.total|m }}</b></td></tr></tfoot></table></div>
 {% endblock %}

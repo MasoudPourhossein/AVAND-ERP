@@ -6,24 +6,24 @@
   <p class="muted">مرجوعی هر کالا را به کارتن و/یا باکس وارد کنید؛ مرجوعی به انبار «{{ c.whname }}» برمی‌گردد و باقیمانده فروش است.</p>
   <div class="f" style="margin-bottom:14px"><div><label>تاریخ امانی</label><input value="{{ c.date }}" disabled></div>
   <div><label>تاریخ فاکتور قطعی</label><input name="settle_date" value="{{ request.form.settle_date or today }}" required></div></div>
-  <table class="lines"><thead><tr><th>#</th><th>کالا</th><th>تحویلی</th><th style="width:90px">مرجوعی کارتن</th><th style="width:90px">مرجوعی باکس</th><th>فروش</th><th style="width:130px">نرخ واحد (ریال)</th><th class="n">مبلغ (ریال)</th></tr></thead><tbody>
+  <div class="lines-wrap"><table class="lines"><thead><tr><th>#</th><th>کالا</th><th>تحویلی</th><th style="width:90px">مرجوعی کارتن</th><th style="width:90px">مرجوعی باکس</th><th>فروش</th><th style="width:130px">نرخ واحد (ریال)</th><th class="n">مبلغ (ریال)</th></tr></thead><tbody>
   {% for l in lines %}<tr data-lid="{{ l.id }}" data-q="{{ l.qty }}" data-k="{{ l.pack or 1 }}" data-u="{{ l.unit }}" data-pu="{{ l.pack_unit }}">
     <td class="i">{{ loop.index }}</td><td class="wide" data-l="کالا">{{ l.code }} - {{ l.name }}</td><td class="wide" data-l="تحویلی" style="font-size:12px">{{ pkr(l.qty, l) }}</td>
     <td data-l="مرجوعی کارتن"><input name="retc_{{ l.id }}" class="rc" type="number" min="0" inputmode="numeric" {{ 'disabled' if (l.pack or 1) <= 1 }}></td>
     <td data-l="مرجوعی باکس"><input name="ret_{{ l.id }}" class="rb" type="number" min="0" inputmode="numeric"></td>
     <td class="so wide" data-l="فروش" style="font-size:12px"></td>
     <td data-l="نرخ واحد"><input name="price_{{ l.id }}" class="pr" type="number" min="0" value="{{ l.price }}"></td><td class="n am" data-l="مبلغ"></td></tr>{% endfor %}</tbody>
-  <tfoot><tr><td colspan="5">جمع</td><td class="n" id="ts"></td><td></td><td class="n" id="ta"></td></tr></tfoot></table>
+  <tfoot><tr><td colspan="5">جمع</td><td class="n" id="ts"></td><td></td><td class="n" id="ta"></td></tr></tfoot></table></div>
 </div>
 <div class="card">
-  <h3>{{ icon('users') }} ۲. فاکتور به مشتریان ویزیتور <span class="sp"></span><button type="button" class="btn sm g" onclick="addBlk()">{{ icon('plus') }} فاکتور مشتری</button></h3>
+  <h3>{{ icon('users') }} ۲. فاکتور به مشتریان {{ 'ویزیتور' if holder.is_visitor else '(اختیاری)' }} <span class="sp"></span><button type="button" class="btn sm g" onclick="addBlk()">{{ icon('plus') }} فاکتور مشتری</button></h3>
   <p class="muted">فروش را بین مشتریانی که ویزیتور به آن‌ها فروخته تقسیم کنید؛ برای هر مشتری یک فاکتور فروش صادر می‌شود. باقیمانده تخصیص‌نیافته به نام مشتری بخش ۳ فاکتور می‌شود.</p>
   <div id="blks"></div>
 </div>
 <div class="card">
   <h3>۳. باقیمانده تخصیص‌نیافته</h3>
   <div class="f"><div><label>فاکتور باقیمانده به نام</label><select name="rest_cust" id="rest">
-    <option value="{{ c.visitor_id }}">خود ویزیتور ({{ c.vname }})</option>
+    <option value="{{ c.visitor_id }}">{{ 'خود ویزیتور' if holder.is_visitor else 'خود مشتری' }} ({{ c.vname }})</option>
     {% for u in custs if u.id != c.visitor_id %}<option value="{{ u.id }}">{{ u.code }} - {{ u.name }}</option>{% endfor %}</select></div></div>
   <div id="restinfo" class="note"></div>
 </div>
@@ -35,11 +35,11 @@
     {% for u in custs %}<option value="{{ u.id }}">{{ u.code }} - {{ u.name }}{{ ' ★' if u.visitor_id == c.visitor_id }}</option>{% endfor %}</select>
     <button type="button" class="btn s sm qa" title="مشتری جدید">{{ icon('plus') }}</button></div>
     <button type="button" class="btn r sm rm">حذف</button></div>
-  <table class="lines"><thead><tr><th>کالا</th><th>قابل تخصیص</th><th style="width:90px">کارتن</th><th style="width:90px">باکس</th><th class="n">مبلغ</th></tr></thead><tbody>
+  <div class="lines-wrap"><table class="lines"><thead><tr><th>کالا</th><th>قابل تخصیص</th><th style="width:90px">کارتن</th><th style="width:90px">باکس</th><th class="n">مبلغ</th></tr></thead><tbody>
   {% for l in lines %}<tr data-lid="{{ l.id }}"><td class="wide" data-l="کالا">{{ l.name }}</td><td class="av wide" data-l="قابل تخصیص" style="font-size:12px"></td>
     <td data-l="کارتن"><input class="qc" type="number" min="0" inputmode="numeric" {{ 'disabled' if (l.pack or 1) <= 1 }}></td>
     <td data-l="باکس"><input class="qb" type="number" min="0" inputmode="numeric"></td><td class="n ba" data-l="مبلغ"></td></tr>{% endfor %}
-  </tbody></table></div></template>
+  </tbody></table></div></div></template>
 {% endblock %}
 {% block js %}<script>
 const f=n=>Number(n||0).toLocaleString('en-US');

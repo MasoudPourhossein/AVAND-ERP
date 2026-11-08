@@ -1,45 +1,60 @@
 {% extends "base.html" %}{% from "_m.html" import icon %}
-{% set TITLES = {'receipt':'رسید انبار جدید','purchase':'فاکتور خرید / برگشت از خرید','transfer':'حواله بین انبار','amani':'صدور فاکتور امانی','sale':'فاکتور فروش مستقیم'} %}
-{% set PARTY = {'purchase':('تامین‌کننده','supplier'),'amani':('ویزیتور','visitor'),'sale':('مشتری','customer')} %}
+{% set TITLES = {'receipt':'رسید انبار','purchase':'فاکتور خرید / برگشت از خرید','transfer':'حواله بین انبار','amani':'فاکتور امانی','sale':'فاکتور فروش','sale_return':'برگشت از فروش'} %}
+{% set PARTY = {'purchase':('تامین‌کننده','supplier'),'amani':('ویزیتور یا مشتری','visitor'),'sale':('مشتری','customer'),'sale_return':('مشتری','customer')} %}
 {% set OUT = mode in ('amani','sale','transfer') %}
-{% set HASPRICE = mode in ('receipt','purchase','sale') %}
-{% block h %}{{ TITLES[mode] }}{% endblock %}
+{% set HASPRICE = mode in ('receipt','purchase','sale','sale_return') %}
+{% set FULL = mode in ('purchase','sale','sale_return') %}
+{% set D = doc or {} %}
+{% block h %}{{ ('ویرایش ' ~ TITLES[mode].split(' / ')[0] ~ ' ' ~ D.no) if D.no else TITLES[mode] }}{% endblock %}
 {% block body %}
 {% set F = request.form %}
+{% macro fv(name, default='') %}{{ F.get(name) if F.get(name) is not none else (D.get(name) if D.get(name) is not none else default) }}{% endmacro %}
 <form method="post" class="card" id="frm" autocomplete="off">
   <div class="f" style="margin-bottom:16px">
-    <div><label>تاریخ</label><input name="date" value="{{ F.date or today }}" required></div>
-    {% if mode=='purchase' %}<div><label>نوع</label><select name="kind" id="pkind"><option value="buy">خرید</option><option value="return" {{ 'selected' if F.kind=='return' }}>برگشت از خرید</option></select></div>{% endif %}
+    <div><label>تاریخ</label><input name="date" value="{{ fv('date', today) }}" required></div>
+    {% if mode=='purchase' %}<div><label>نوع</label><select name="kind" id="pkind"><option value="buy">خرید</option><option value="return" {{ 'selected' if fv('kind')=='return' }}>برگشت از خرید</option></select></div>{% endif %}
     {% if mode=='transfer' %}
       <div><label>از انبار</label><select name="from_wh" id="whsel" required>{% for w in whs %}<option value="{{ w.id }}" {{ 'selected' if (F.from_wh or wh)|string==w.id|string }}>{{ w.name }}</option>{% endfor %}</select></div>
       <div><label>به انبار</label><select name="to_wh" required>{% for w in whs %}<option value="{{ w.id }}" {{ 'selected' if F.to_wh|string==w.id|string }}>{{ w.name }}</option>{% endfor %}</select></div>
-    {% else %}
-      <div><label>انبار</label><select name="wh_id" id="whsel" required>{% for w in whs %}<option value="{{ w.id }}" {{ 'selected' if (F.wh_id or wh)|string==w.id|string }}>{{ w.name }}{{ ' (پیش‌فرض)' if w.is_default }}</option>{% endfor %}</select></div>
+    {% else %}{% set wsel = fv('wh_id', wh)|string %}
+      <div><label>انبار</label><select name="wh_id" id="whsel" required>{% for w in whs %}<option value="{{ w.id }}" {{ 'selected' if wsel==w.id|string }}>{{ w.name }}{{ ' (پیش‌فرض)' if w.is_default }}</option>{% endfor %}</select></div>
     {% endif %}
-    {% if mode in PARTY %}{% set plab, pkind = PARTY[mode] %}{% set sel = (F.party_id or request.args.party or '')|string %}
+    {% if mode in PARTY %}{% set plab, pkind = PARTY[mode] %}{% set sel = (F.party_id or request.args.party or D.customer_id or D.supplier_id or '')|string %}
     <div class="pick"><label>{{ plab }} (کد یا نام را تایپ کنید)</label>
       <div style="display:flex;gap:6px"><input id="pin" placeholder="کد یا نام {{ plab }}" style="flex:1" value="{% for v in parties %}{% if v.id|string==sel %}{{ v.code }} - {{ v.name }}{% endif %}{% endfor %}">
-      {% if mode=='sale' %}<button type="button" class="btn s sm" onclick="quickAdd()" title="مشتری جدید">{{ icon('plus') }}</button>{% endif %}</div>
+      {% if mode in ('sale','sale_return') %}<button type="button" class="btn s sm" onclick="quickAdd()" title="مشتری جدید">{{ icon('plus') }}</button>{% endif %}</div>
       <input type="hidden" name="party_id" id="pid" value="{{ sel }}"></div>
     {% endif %}
-    {% if mode=='sale' %}<div><label>ویزیتور (اختیاری)</label><select name="visitor_id" id="vsel"><option value="">—</option>
-      {% for v in visitors %}<option value="{{ v.id }}" {{ 'selected' if F.visitor_id|string==v.id|string }}>{{ v.code }} - {{ v.name }}</option>{% endfor %}</select></div>{% endif %}
-    {% if mode=='purchase' %}<div><label>شماره فاکتور تامین‌کننده</label><input name="ref_no" value="{{ F.ref_no or '' }}"></div>{% endif %}
-    {% if mode in ('purchase','sale') %}<div><label>تخفیف کل (ریال)</label><input name="discount" id="disc" type="number" min="0" value="{{ F.discount or 0 }}" oninput="calc()"></div>{% endif %}
-    <div style="grid-column:1/-1"><label>توضیح</label><input name="note" value="{{ F.note or '' }}"></div>
+    {% if mode in ('sale','sale_return') %}{% set vsel_ = fv('visitor_id')|string %}<div><label>ویزیتور (اختیاری)</label><select name="visitor_id" id="vsel"><option value="">—</option>
+      {% for v in visitors %}<option value="{{ v.id }}" {{ 'selected' if vsel_==v.id|string }}>{{ v.code }} - {{ v.name }}</option>{% endfor %}</select></div>{% endif %}
+    {% if mode=='sale_return' %}<div><label>شماره فاکتور فروش مرجع (اختیاری)</label><input name="ret_of_no" value="{{ fv('ret_of_no') }}" inputmode="numeric"></div>{% endif %}
+    {% if mode=='purchase' %}<div><label>شماره فاکتور تامین‌کننده</label><input name="ref_no" value="{{ fv('ref_no') }}"></div>{% endif %}
+    {% if mode=='sale' %}<div><label>شماره سفارش / مرجع</label><input name="ref_no" value="{{ fv('ref_no') }}"></div>{% endif %}
+    {% if FULL %}
+    {% set pt = fv('pay_terms') %}<div><label>نحوه پرداخت</label><select name="pay_terms"><option value="">—</option>{% for t in PAY_TERMS %}<option {{ 'selected' if pt==t }}>{{ t }}</option>{% endfor %}</select></div>
+    <div><label>سررسید پرداخت</label><input name="due_date" value="{{ fv('due_date') }}" placeholder="1405/09/01"></div>
+    <div><label>تخفیف نهایی فاکتور (ریال)</label><input name="discount" id="disc" type="number" min="0" value="{{ fv('discount', 0) }}" oninput="calc()"></div>
+    {% endif %}
+    <div style="grid-column:1/-1"><label>توضیح</label><input name="note" value="{{ fv('note') }}"></div>
   </div>
-  <div class="note no-print" style="margin:0 0 8px">کد یا ابتدای نام کالا را تایپ کنید • <span class="kbd">F1</span> جستجوی کالا • <span class="kbd">Enter</span> ردیف بعد • <span class="kbd">Insert</span> ردیف جدید</div>
-  <table class="lines"><thead><tr><th style="width:36px">#</th><th style="width:44px"></th><th style="width:120px">کد کالا</th><th>نام کالا</th><th style="width:150px">موجودی انبار</th>
-    <th style="width:90px">کارتن</th><th style="width:90px">باکس</th><th style="width:150px">جمع تعداد</th>
-    {% if HASPRICE or mode=='amani' %}<th style="width:140px">{{ 'نرخ خرید واحد' if mode in ('receipt','purchase') else 'نرخ فروش واحد' }}</th><th class="n" style="width:130px">مبلغ</th>{% endif %}</tr></thead>
+  <div class="note no-print" style="margin:0 0 8px">کد یا ابتدای نام کالا را تایپ کنید • <span class="kbd">F1</span> جستجوی کالا • <span class="kbd">Enter</span> فیلد/ردیف بعد • <span class="kbd">Insert</span> ردیف جدید{% if FULL and not vat_on %} • مالیات ارزش افزوده در تنظیمات غیرفعال است{% endif %}</div>
+  <div class="lines-wrap"><table class="lines"><thead><tr><th style="width:36px">#</th><th style="width:44px"></th><th style="width:110px">کد کالا</th><th>نام کالا</th><th style="width:140px">موجودی انبار</th>
+    <th style="width:80px">کارتن</th><th style="width:80px">باکس</th><th style="width:140px">جمع تعداد</th>
+    {% if HASPRICE or mode=='amani' %}<th style="width:120px">{{ 'نرخ خرید واحد' if mode in ('receipt','purchase') else 'نرخ فروش واحد' }}</th>{% endif %}
+    {% if FULL %}<th style="width:110px">تخفیف ردیف</th><th style="width:70px">مالیات %</th>{% endif %}
+    {% if HASPRICE or mode=='amani' %}<th class="n" style="width:130px">مبلغ{{ ' با مالیات' if FULL }}</th>{% endif %}</tr></thead>
   <tbody id="rows"></tbody>
-  <tfoot><tr><td colspan="7">جمع</td><td class="n" id="tq">0</td>{% if HASPRICE or mode=='amani' %}<td></td><td class="n" id="tv">0</td>{% endif %}</tr>
-  {% if mode in ('purchase','sale') %}<tr><td colspan="7">مبلغ پس از تخفیف</td><td></td><td></td><td class="n" id="tn">0</td></tr>{% endif %}</tfoot></table>
+  <tfoot><tr><td colspan="7">جمع</td><td class="n" id="tq">0</td>{% if HASPRICE or mode=='amani' %}<td></td>{% if FULL %}<td class="n" id="td">0</td><td class="n" id="tx">0</td>{% endif %}<td class="n" id="tv">0</td>{% endif %}</tr></tfoot></table></div>
+  {% if FULL %}<div class="doc-foot"><table style="width:auto;margin:12px auto 0 0" class="totbox">
+    <tr><td>جمع مبلغ کالاها</td><td class="n" id="s_g">0</td></tr><tr><td>تخفیف ردیف‌ها</td><td class="n" id="s_d">0</td></tr>
+    <tr><td>مالیات و عوارض ارزش افزوده</td><td class="n" id="s_v">0</td></tr><tr><td>تخفیف نهایی</td><td class="n" id="s_h">0</td></tr>
+    <tr><td><b>مبلغ قابل پرداخت (ریال)</b></td><td class="n"><b id="s_t">0</b></td></tr></table></div>{% endif %}
   <div class="bar" style="margin-top:14px">
     <button type="button" class="btn s" onclick="addRow(true)">{{ icon('plus') }} ردیف جدید</button>
     <button type="button" class="btn s" onclick="openItems()">{{ icon('list') }} جستجوی کالا (F1)</button>
     <span class="sp"></span>
-    <button class="btn g">ثبت {{ TITLES[mode].split(' / ')[0].replace(' جدید','') }}</button>
+    {% if D.id %}<a class="btn s" href="{{ request.referrer or '/' }}">انصراف</a>{% endif %}
+    <button class="btn g">{{ 'ذخیره تغییرات' if D.id else 'ثبت ' ~ TITLES[mode].split(' / ')[0] }}</button>
   </div>
 </form>
 <template id="rt"><tr><td class="i"></td><td class="del-td" style="text-align:left"><button type="button" class="btn sm r del" tabindex="-1">×</button></td>
@@ -48,8 +63,10 @@
   <td class="st wide" data-l="موجودی انبار" style="font-size:12px">-</td>
   <td data-l="کارتن"><input name="ctn" type="number" min="0" inputmode="numeric"></td><td data-l="باکس"><input name="box" type="number" min="0" inputmode="numeric"></td>
   <td class="tqr wide" data-l="جمع تعداد" style="font-size:12px">-</td>
-  {% if HASPRICE %}<td data-l="نرخ واحد"><input name="price" type="number" min="0" inputmode="numeric"></td><td class="n va" data-l="مبلغ">-</td>
-  {% elif mode=='amani' %}<td class="n pr" data-l="نرخ فروش واحد">-</td><td class="n va" data-l="مبلغ">-</td>{% endif %}</tr></template>
+  {% if HASPRICE %}<td data-l="نرخ واحد"><input name="price" type="number" min="0" inputmode="numeric"></td>
+  {% elif mode=='amani' %}<td class="n pr" data-l="نرخ فروش واحد">-</td>{% endif %}
+  {% if FULL %}<td data-l="تخفیف ردیف (ریال)"><input name="disc" type="number" min="0" inputmode="numeric"></td><td data-l="مالیات %"><input name="vat" type="number" min="0" max="100" step="0.01" inputmode="decimal"></td>{% endif %}
+  {% if HASPRICE or mode=='amani' %}<td class="n va" data-l="مبلغ">-</td>{% endif %}</tr></template>
 <div class="pick-list" id="plist" style="position:fixed"></div>
 <div class="modal" id="im" onclick="if(event.target===this)closeItems()">
   <div class="modal-box"><div class="mh"><input id="imq" placeholder="جستجوی کد یا نام کالا"><span class="kbd">Esc</span></div>
@@ -58,9 +75,10 @@
 {% endblock %}
 {% block js %}
 <script>
-const MODE={{ mode|tojson }},OUT={{ OUT|tojson }},HASPRICE={{ HASPRICE|tojson }};
+const MODE={{ mode|tojson }},OUT={{ OUT|tojson }},HASPRICE={{ HASPRICE|tojson }},FULL={{ FULL|tojson }},VATON={{ (vat_on or false)|tojson }},VATDEF={{ (vat_def or 0)|tojson }};
+const INIT={{ init_lines|tojson }};
 const ST={{ stock_map|tojson }};
-const IT=[{% for i in items if i.active %}{id:{{ i.id }},code:{{ i.code|tojson }},name:{{ i.name|tojson }},p:{{ i.price|int }},c:{{ i.cost|round|int }},k:{{ i.pack or 1 }},u:{{ i.unit|tojson }},pu:{{ i.pack_unit|tojson }}},{% endfor %}];
+const IT=[{% for i in items if i.active %}{id:{{ i.id }},code:{{ i.code|tojson }},name:{{ i.name|tojson }},p:{{ i.price|int }},c:{{ i.cost|round|int }},k:{{ i.pack or 1 }},u:{{ i.unit|tojson }},pu:{{ i.pack_unit|tojson }},v:{{ (i.vat_rate if i.vat_rate is not none else -1)|tojson }}},{% endfor %}];
 let PS=[{% for v in parties %}{id:{{ v.id }},code:{{ v.code|tojson }},name:{{ v.name|tojson }},vid:{{ (v.visitor_id or 0)|tojson }}},{% endfor %}];
 const byId=Object.fromEntries(IT.map(x=>[x.id,x]));
 const f=n=>Number(n||0).toLocaleString('en-US');
@@ -84,11 +102,13 @@ function keyNav(e){if(PL.style.display!=='block')return false;const it=[...PL.ch
   if(e.key==='ArrowDown'||e.key==='ArrowUp'){e.preventDefault();act=(act+(e.key==='ArrowDown'?1:-1)+it.length)%it.length;it.forEach((d,i)=>d.classList.toggle('act',i===act));it[act].scrollIntoView({block:'nearest'});return true}
   if(e.key==='Enter'&&act>=0){e.preventDefault();cur.onPick(list[act]);hideList();return true}
   if(e.key==='Escape'){hideList();return true}return false}
-function defPrice(x){return MODE==='sale'||MODE==='amani'?x.p:x.c}
+function defPrice(x){return MODE==='sale'||MODE==='sale_return'||MODE==='amani'?x.p:x.c}
+function defVat(x){return !VATON?0:(x.v>=0?x.v:VATDEF)}
 function setItem(tr,x){tr.querySelector('input[name=item_id]').value=x?x.id:'';tr.querySelector('.code').value=x?x.code:'';tr.querySelector('.name').value=x?x.name:'';
   tr.querySelector('.st').textContent=x?pkf(stk(x),x):'-';
   if(MODE==='amani')tr.querySelector('.pr').textContent=x?f(x.p):'-';
   if(HASPRICE){const pi=tr.querySelector('input[name=price]');if(x&&!pi.value)pi.value=defPrice(x)||''}
+  if(FULL){const vi=tr.querySelector('input[name=vat]');if(x&&vi.value==='')vi.value=defVat(x)}
   const ci=tr.querySelector('input[name=ctn]');ci.disabled=!!(x&&x.k<=1);if(ci.disabled)ci.value='';ci.placeholder=x&&x.k>1?('×'+x.k):'';
   if(x){const dup=[...rowsEl.querySelectorAll('input[name=item_id]')].filter(h=>h.value==x.id).length>1;if(dup)alert('این کالا قبلا در سند آمده است.')}
   calc();if(x)tr.querySelector(x.k>1?'input[name=ctn]':'input[name=box]').focus()}
@@ -104,19 +124,26 @@ function addRow(focus){const t=document.getElementById('rt').content.cloneNode(t
   tr.querySelectorAll('input[type=number]').forEach(i=>{i.addEventListener('input',calc);i.addEventListener('focus',()=>{lastRow=tr});
     i.addEventListener('keydown',e=>{if(e.key==='Enter'){e.preventDefault();if(i.name==='ctn'){tr.querySelector('input[name=box]').focus();return}
       if(i.name==='box'&&HASPRICE){tr.querySelector('input[name=price]').focus();return}
+      if(i.name==='price'&&FULL){tr.querySelector('input[name=disc]').focus();return}
       const nx=tr.nextElementSibling||addRow(false);nx.querySelector('.code').focus()}})});
   tr.querySelector('.del').addEventListener('click',()=>{tr.remove();calc()});
   rowsEl.appendChild(tr);num();if(focus)code.focus();return tr}
 function num(){rowsEl.querySelectorAll('tr').forEach((r,i)=>r.querySelector('.i').textContent=i+1)}
 function isOut(){return OUT||(MODE==='purchase'&&document.getElementById('pkind').value==='return')}
-function calc(){let q=0,v=0;rowsEl.querySelectorAll('tr').forEach(r=>{const x=byId[r.querySelector('input[name=item_id]').value],ci=r.querySelector('input[name=ctn]'),bi=r.querySelector('input[name=box]'),
+function calc(){let q=0,G=0,Dd=0,V=0,A=0;rowsEl.querySelectorAll('tr').forEach(r=>{const x=byId[r.querySelector('input[name=item_id]').value],ci=r.querySelector('input[name=ctn]'),bi=r.querySelector('input[name=box]'),
   n=(+ci.value||0)*(x?x.k:1)+(+bi.value||0);r.querySelector('.tqr').textContent=n?pkf(n,x):'-';
   if(x)r.querySelector('.st').textContent=pkf(stk(x),x);
   q+=n;const over=!!(x&&isOut()&&n>stk(x));ci.style.background=bi.style.background=over?'#fee2e2':'';
-  let s=0;if(HASPRICE)s=n*(+r.querySelector('input[name=price]').value||0);else if(MODE==='amani')s=x?n*x.p:0;
-  v+=s;const va=r.querySelector('.va');if(va)va.textContent=f(s)});
-  document.getElementById('tq').textContent=f(q);const tv=document.getElementById('tv');if(tv)tv.textContent=f(v);
-  const tn=document.getElementById('tn');if(tn)tn.textContent=f(v-(+document.getElementById('disc').value||0));num()}
+  let s=0;if(HASPRICE){const g=n*(+r.querySelector('input[name=price]').value||0);s=g;G+=g;
+    if(FULL){const d=+r.querySelector('input[name=disc]').value||0,vr=+r.querySelector('input[name=vat]').value||0,v=Math.round((g-d)*vr/100);Dd+=d;V+=v;s=g-d+v;
+      r.querySelector('input[name=disc]').style.background=d>g?'#fee2e2':''}}
+  else if(MODE==='amani')s=x?n*x.p:0;
+  A+=s;const va=r.querySelector('.va');if(va)va.textContent=f(s)});
+  document.getElementById('tq').textContent=f(q);const tv=document.getElementById('tv');if(tv)tv.textContent=f(A);
+  if(FULL){const h=+document.getElementById('disc').value||0;document.getElementById('td').textContent=f(Dd);document.getElementById('tx').textContent=f(V);
+    document.getElementById('s_g').textContent=f(G);document.getElementById('s_d').textContent=f(Dd);document.getElementById('s_v').textContent=f(V);
+    document.getElementById('s_h').textContent=f(h);document.getElementById('s_t').textContent=f(G-Dd+V-h)}
+  num()}
 let lastRow=null;
 WS.addEventListener('change',calc);const PK=document.getElementById('pkind');if(PK)PK.addEventListener('change',calc);
 const IM=document.getElementById('im'),IQ=document.getElementById('imq'),IR=document.getElementById('imr');let mAct=0,mList=[];
@@ -148,7 +175,11 @@ document.getElementById('frm').addEventListener('submit',e=>{
   const bad=[...rowsEl.children].find(r=>(r.querySelector('.code').value||r.querySelector('.name').value)&&!r.querySelector('input[name=item_id]').value);
   if(bad){e.preventDefault();alert('کالای ردیف '+bad.querySelector('.i').textContent+' از لیست انتخاب نشده است.');bad.querySelector('.code').focus()}});
 window.addEventListener('scroll',e=>{if(!PL.contains(e.target))hideList()},true);
-for(let i=0;i<(innerWidth<640?1:5);i++)addRow(false);
+if(INIT.length){INIT.forEach(l=>{const tr=addRow(false),x=byId[l.id];if(!x)return;
+  tr.querySelector('input[name=price]')&&(tr.querySelector('input[name=price]').value=l.price);
+  if(FULL){tr.querySelector('input[name=disc]').value=l.disc||'';tr.querySelector('input[name=vat]').value=l.vat||0}
+  tr.querySelector('input[name=ctn]').value=l.ctn||'';tr.querySelector('input[name=box]').value=l.box||'';setItem(tr,x)});addRow(false);calc()}
+else for(let i=0;i<(innerWidth<640?1:5);i++)addRow(false);
 (PIN&&!PIN.value?PIN:rowsEl.querySelector('.code')).focus();
 </script>
 {% endblock %}

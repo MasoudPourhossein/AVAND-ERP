@@ -1,0 +1,81 @@
+<!doctype html>
+<html lang="fa" dir="rtl"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>{{ d.title }} {{ d.no }} | {{ COMPANY }}</title>
+<style>
+{% if pdf %}
+@font-face{font-family:VZ;src:url("file://{{ font_dir }}/Vazirmatn-FD-Regular.ttf");font-weight:400}
+@font-face{font-family:VZ;src:url("file://{{ font_dir }}/Vazirmatn-FD-Bold.ttf");font-weight:700}
+{% else %}
+@font-face{font-family:VZ;src:url({{ url_for('static', filename='fonts/Vazirmatn-FD-Regular.woff2') }}) format("woff2");font-weight:400}
+@font-face{font-family:VZ;src:url({{ url_for('static', filename='fonts/Vazirmatn-FD-Bold.woff2') }}) format("woff2");font-weight:700}
+{% endif %}
+@page{size:A4 landscape;margin:8mm 8mm 10mm}
+*{box-sizing:border-box}
+body{font-family:VZ,Tahoma,sans-serif;color:#111;margin:0;font-size:10pt;background:{{ '#fff' if pdf else '#eef1f6' }}}
+.sheet{background:#fff;max-width:290mm;margin:{{ '0' if pdf else '16px auto' }};padding:{{ '0' if pdf else '8mm' }};{{ '' if pdf else 'box-shadow:0 2px 14px rgba(0,0,0,.08);border-radius:10px' }}}
+.bar{max-width:290mm;margin:12px auto 0;display:flex;gap:8px;flex-wrap:wrap}
+.bar a,.bar button{font:inherit;font-size:13px;border:1px solid #cfd6e4;background:#fff;color:#111;padding:7px 14px;border-radius:9px;cursor:pointer;text-decoration:none}
+.bar .p{background:#4f46e5;color:#fff;border-color:#4f46e5}.bar .r{background:#dc2626;color:#fff;border-color:#dc2626}.bar span{flex:1}
+.hd{display:flex;align-items:center;gap:10px;border:1.5px solid #111;border-radius:6px;padding:6px 10px}
+.hd .lg{width:150px;text-align:center}.hd .lg img{max-height:60px;max-width:140px}.pw{font-size:6.5pt;color:#888;direction:ltr}
+.hd h1{flex:1;text-align:center;margin:0;font-size:15pt}
+.hd .no{width:170px;font-size:9.5pt;line-height:1.9}.hd .no b{font-size:10.5pt}
+.box{border:1.5px solid #111;border-radius:6px;margin-top:6px}
+.box .t{background:#e9ecf2;font-weight:700;text-align:center;padding:2px;border-bottom:1px solid #111;font-size:9.5pt}
+.grid{display:grid;grid-template-columns:2.2fr 1fr 1fr 1fr;gap:2px 14px;padding:5px 10px;font-size:9pt}
+.grid .w{grid-column:span 2}.grid span{color:#555}
+.meta{display:flex;flex-wrap:wrap;gap:4px 22px;padding:5px 10px;font-size:9pt}.meta span{color:#555}
+table{width:100%;border-collapse:collapse;margin-top:6px;font-size:8.6pt}
+th{background:#e9ecf2;border:1px solid #111;padding:4px 3px;font-weight:700;font-size:8pt}
+td{border:1px solid #555;padding:3px 4px;text-align:center}
+td.n{direction:ltr;text-align:left;font-variant-numeric:tabular-nums;white-space:nowrap}td.l{text-align:right}
+tfoot td{font-weight:700;background:#f4f6fa}
+thead{display:table-header-group}tr{page-break-inside:avoid}
+.words{border:1.5px solid #111;border-radius:6px;margin-top:6px;padding:5px 10px;font-size:9.5pt}
+.sum{display:flex;gap:6px;margin-top:6px}.sum>div{flex:1;border:1.5px solid #111;border-radius:6px;padding:6px 10px;font-size:9pt;min-height:60px}
+.sign{display:flex;gap:6px;margin-top:6px}.sign>div{flex:1;border:1.5px solid #111;border-radius:6px;height:70px;padding:5px 10px;font-size:9pt;color:#555}
+.ft{display:flex;justify-content:space-between;font-size:7.5pt;color:#777;margin-top:4px}
+@media print{body{background:#fff}.bar{display:none}.sheet{margin:0;padding:0;box-shadow:none;max-width:none}}
+@media (max-width:760px){.sheet{padding:10px;border-radius:0;margin:0}.grid{grid-template-columns:1fr 1fr}.hd{flex-wrap:wrap}.hd .lg,.hd .no{width:auto}
+ .tw{overflow-x:auto}table{min-width:900px}.sum,.sign{flex-direction:column}}
+</style></head><body>
+{% if not pdf %}<div class="bar">
+  <button class="p" onclick="print()">چاپ</button><a href="?fmt=pdf">PDF</a><a href="{{ d.back }}">بازگشت</a>
+  {% if d.edit %}<a href="{{ d.edit }}">ویرایش</a>{% endif %}{% if d.ret %}<a href="{{ d.ret }}">ثبت برگشت از فروش</a>{% endif %}
+  <span></span>{% if d.delete %}<form method="post" action="{{ d.delete }}" onsubmit="return confirm('فاکتور حذف شود؟')" style="margin:0"><button class="r">حذف</button></form>{% endif %}
+</div>{% endif %}
+<div class="sheet">
+  <div class="hd">
+    <div class="lg">{% if pdf and logo %}<img src="file://{{ logo }}"><br>{% elif not pdf and HAS_LOGO %}<img src="{{ url_for('logo', v=LOGO_V) }}"><br>{% endif %}<span class="pw">{{ POWERED }}</span></div>
+    <h1>{{ d.title }}</h1>
+    <div class="no">شماره: <b>{{ d.no }}</b><br>تاریخ: <b>{{ d.date }}</b></div>
+  </div>
+  {% for lab, p in ((d.seller_label, d.seller), (d.buyer_label, d.buyer)) %}
+  <div class="box"><div class="t">{{ lab }}</div><div class="grid">
+    <div class="w"><span>نام شخص حقیقی / حقوقی: </span><b>{{ p.name }}</b>{{ ' (' ~ p.code ~ ')' if p.code }}</div>
+    <div><span>کد اقتصادی: </span>{{ p.economic_code }}</div><div><span>شناسه / کد ملی: </span>{{ p.national_id }}</div>
+    <div><span>شماره ثبت: </span>{{ p.reg_no }}</div><div><span>کد پستی: </span>{{ p.postal_code }}</div><div><span>تلفن: </span><span dir="ltr" style="color:#111">{{ p.phone }}</span></div>
+    <div><span>نوع: </span>{{ p.ptype }}</div><div class="w" style="grid-column:1/-1"><span>نشانی: </span>{{ p.address }}</div>
+  </div></div>{% endfor %}
+  {% if d.meta %}<div class="box"><div class="meta">{% for k, v in d.meta %}<div><span>{{ k }}: </span><b>{{ v }}</b></div>{% endfor %}</div></div>{% endif %}
+  <div class="tw"><table>
+    <thead><tr><th>ردیف</th><th>کد کالا</th><th>شرح کالا یا خدمات</th><th>تعداد / مقدار</th><th>واحد</th><th>مبلغ واحد (ریال)</th><th>مبلغ کل (ریال)</th>
+      <th>تخفیف (ریال)</th><th>مبلغ کل پس از تخفیف</th><th>نرخ مالیات</th><th>مالیات و عوارض ارزش افزوده</th><th>جمع کل (ریال)</th></tr></thead>
+    <tbody>{% for l in d.lines %}<tr><td>{{ loop.index }}</td><td>{{ l.code }}</td><td class="l">{{ l.name }}{% if l.pack_t %}<br><small style="color:#666">{{ l.pack_t }}</small>{% endif %}</td>
+      <td class="n">{{ l.qty|m }}</td><td>{{ l.unit }}</td><td class="n">{{ l.price|m }}</td><td class="n">{{ l.gross|m }}</td><td class="n">{{ l.disc|m }}</td>
+      <td class="n">{{ l.net|m }}</td><td>{{ (l.vat_rate|round(2))|string|replace('.0','') }}%</td><td class="n">{{ l.vat|m }}</td><td class="n">{{ l.total|m }}</td></tr>{% endfor %}</tbody>
+    <tfoot>
+      <tr><td colspan="3">جمع</td><td class="n">{{ d.lines|sum(attribute='qty')|m }}</td><td></td><td></td><td class="n">{{ d.gross|m }}</td><td class="n">{{ d.ldisc|m }}</td>
+        <td class="n">{{ (d.gross - d.ldisc)|m }}</td><td></td><td class="n">{{ d.vat|m }}</td><td class="n">{{ (d.gross - d.ldisc + d.vat)|m }}</td></tr>
+      {% if d.hdisc %}<tr><td colspan="11" style="text-align:left">تخفیف نهایی فاکتور</td><td class="n">{{ d.hdisc|m }}</td></tr>{% endif %}
+      <tr><td colspan="11" style="text-align:left">مبلغ قابل پرداخت (ریال)</td><td class="n" style="font-size:10pt">{{ d.total|m }}</td></tr>
+    </tfoot></table></div>
+  <div class="words">مبلغ به حروف: <b>{{ d.words }} ریال</b></div>
+  <div class="sum">
+    {% if d.paid %}<div><b>وضعیت پرداخت</b><br>کارت‌خوان: {{ d.paid[0]|m }} — نقد: {{ d.paid[1]|m }}<br>مانده: <b>{{ d.paid[2]|m }}</b> ریال</div>{% endif %}
+    <div><b>توضیحات</b><br>{{ d.note or '—' }}</div>
+  </div>
+  <div class="sign"><div>{{ d.sign[0] }}</div><div>{{ d.sign[1] }}</div></div>
+  <div class="ft"><span>{{ COMPANY }}</span><span>ثبت‌کننده: {{ d.user or '—' }} — تاریخ چاپ: {{ now }}</span></div>
+</div>
+</body></html>
