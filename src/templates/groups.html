@@ -1,7 +1,7 @@
 {% extends "base.html" %}{% from "_m.html" import icon %}{% block h %}گروه‌های کالا{% endblock %}
 {% block body %}
 <div class="card"><h3>{{ icon('plus') }} گروه جدید</h3>
-<form method="post" class="f"><div><label>کد گروه</label><input name="code" required></div><div><label>نام گروه</label><input name="name" required></div>
+<form method="post" class="f"><div><label>کد گروه (خالی = خودکار)</label><input name="code" placeholder="خودکار"></div><div><label>نام گروه</label><input name="name" required></div>
 <div><label>گروه بالادست (اختیاری)</label><select name="parent_id"><option value="">—</option>{% for g_ in rows %}<option value="{{ g_.id }}">{{ g_.code }} - {{ g_.name }}</option>{% endfor %}</select></div>
 <div><button class="btn g">ثبت گروه</button></div></form></div>
 <div class="card"><h3>گروه‌ها</h3><table><tr><th>کد</th><th>نام</th><th>بالادست</th><th class="n">تعداد کالا</th><th>فعال</th><th></th></tr>

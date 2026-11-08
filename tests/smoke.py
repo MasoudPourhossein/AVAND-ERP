@@ -270,7 +270,6 @@ P("/warehouses", {"code": "W09", "name": "انبار فیک"}); w9 = one("SELECT
 assert "حذف شد" in T(P(f"/delete/warehouse/{w9}", {}))
 P("/accounts", {"parent_id": one("SELECT id FROM accounts WHERE code='82'"), "code": "8299", "name": "هزینه فیک"})
 assert "حذف شد" in T(P(f"/delete/account/{one(chr(83)+'ELECT id FROM accounts WHERE code=' + chr(39) + '8299' + chr(39))}", {}))
-G("/system/reset")
 # permissions
 P("/users", {"username": "anbar", "password": "pass123", "role": "stock", "perm": ["receipt", "transfer", "purchase", "rep_stock"]})
 ac = A.app.test_client(); P("/login", {"username": "anbar", "password": "pass123"}, ac)
@@ -288,16 +287,21 @@ P(f"/invoices/{iid}/remove", {"step": "2", "action": "delete", "confirm": no_d, 
 assert one(f"SELECT SUM(qty) FROM stock_moves WHERE item_id={k1} AND wh_id={w2}") == 100
 gl_ok()
 assert one(f"SELECT COUNT(*) FROM vouchers WHERE src_type='FCT' AND src_id={iid}") == 0
-# admin reset of test data
-assert "رمز عبور" in T(P("/system/reset", {"mode": "docs", "confirm": "حذف همه", "ok": "1", "password": "bad"}))
-assert ac.post("/system/reset", data={"mode": "all"}).status_code in (302, 403)
-P("/system/reset", {"mode": "docs", "confirm": "حذف همه", "ok": "1", "password": "secret1"})
-assert one("SELECT COUNT(*) FROM sales_invoices") == 0 and one("SELECT COUNT(*) FROM vouchers") == 0 and one("SELECT COUNT(*) FROM stock_moves") == 0
-assert one("SELECT COUNT(*) FROM persons") > 0 and one("SELECT COUNT(*) FROM items") > 0
-assert "حذف شد" in T(P(f"/delete/person/{c1}", {}))
-P("/system/reset", {"mode": "all", "confirm": "حذف همه", "ok": "1", "password": "secret1"})
-assert one("SELECT COUNT(*) FROM persons") == 0 and one("SELECT COUNT(*) FROM items") == 0 and one("SELECT COUNT(*) FROM users") >= 1
-P("/persons", {"name": "مشتری جدید", "is_customer": "1", "active": "1"})
-P("/items", {"code": "N1", "name": "کالای جدید", "unit": "عدد", "pack": 1, "buy": 10, "price": 20, "init_box": 5, "wh_id": w1, "date": "1405/09/01"})
-assert one("SELECT no FROM receipts") > 0; gl_ok(); G("/"); G("/reports/gl/trial")
+assert cl.get("/system/reset").status_code == 404
+# auto codes: manual form, groups, excel template without codes
+P("/items", {"code": "", "name": "کالای بی‌کد", "unit": "عدد", "pack": 1, "buy": 5, "price": 9, "date": "1405/09/01"})
+ac1 = one("SELECT code FROM items WHERE name='کالای بی‌کد'"); assert ac1.isdigit() and int(ac1) >= 1001
+P("/groups", {"code": "", "name": "گروه بی‌کد"}); assert one("SELECT code FROM item_groups WHERE name='گروه بی‌کد'").isdigit()
+from openpyxl import load_workbook  # noqa: E402
+hd = [c.value for c in load_workbook(io.BytesIO(cl.get("/items/template.xlsx").data)).active[1]]
+assert "کد کالا" not in hd and "نام کالا" in hd
+wb = Workbook(); ws = wb.active; ws.append(hd)
+ws.append(["دستمال کاغذی", "سلولزی جدید", "بسته", "کارتن", 12, 40, 70, 24, ""]); ws.append(["کالای بی‌کد", "", "", "", "", "", 11, "", ""])
+b = io.BytesIO(); wb.save(b); b.seek(0)
+r = ok(cl.post("/items/import", data={"file": (b, "t.xlsx"), "date": "1405/09/02", "wh_id": w1}, content_type="multipart/form-data", follow_redirects=True), "imp2")
+assert "کالای جدید: 1" in T(r) and "به‌روزرسانی: 1" in T(r), T(r)[:400]
+nc = one("SELECT code FROM items WHERE name='دستمال کاغذی'"); assert nc.isdigit() and int(nc) == int(ac1) + 1
+assert one("SELECT g.code FROM items i JOIN item_groups g ON g.id=i.group_id WHERE i.name='دستمال کاغذی'").isdigit()
+assert one("SELECT SUM(qty) FROM stock_moves m JOIN items i ON i.id=m.item_id WHERE i.name='دستمال کاغذی'") == 24
+gl_ok()
 print("SMOKE OK")

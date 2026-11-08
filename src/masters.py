@@ -14,6 +14,22 @@ def _vat_in():
         return None
 
 
+def new_code(table, start):
+    """next numeric code: max numeric code + 1 (at least `start`)"""
+    m = v1(f"SELECT MAX(code::bigint) FROM {table} WHERE code ~ '^[0-9]{{1,15}}$'")
+    return str(max(int(m or 0) + 1, start))
+
+
+def group_by_name(name, code=""):
+    """find a group by code or exact name; create it (auto code) if missing"""
+    if code:
+        gid = v1("SELECT id FROM item_groups WHERE code=?", (code,))
+        if gid:
+            return gid
+    gid = v1("SELECT id FROM item_groups WHERE name=? ORDER BY id LIMIT 1", (name,)) if name else 0
+    return gid or x("INSERT INTO item_groups(code,name) VALUES(?,?)", (code or new_code("item_groups", 10), name or code))
+
+
 def _groups():
     return q("SELECT * FROM item_groups ORDER BY code")
 
@@ -31,8 +47,9 @@ def items():
         date = norm_date(request.form.get("date")) or today_j()
         wh = to_int(request.form.get("wh_id")) or default_wh()
         gid = to_int(request.form.get("group_id")) or None
-        if not code or not name:
-            flash("کد و نام کالا لازم است.", "bad")
+        code = code or new_code("items", 1001)
+        if not name:
+            flash("نام کالا لازم است.", "bad")
         elif q("SELECT 1 FROM items WHERE code=?", (code,), one=True):
             flash("این کد کالا قبلا ثبت شده است.", "bad")
         else:
@@ -40,7 +57,7 @@ def items():
                     (code, name, gid, unit, pack, pack_unit, request.form.get("barcode", "").strip() or None, _vat_in()))
             if price or buy:
                 x("INSERT INTO prices(item_id,date,price,buy) VALUES(?,?,?,?)", (iid, date, price, buy))
-            msg = f"کالا «{name}» ثبت شد."
+            msg = f"کالا «{name}» با کد {code} ثبت شد."
             if init_qty > 0:
                 from inventory import make_receipt
                 no, _ = make_receipt(date, wh, "opening", "موجودی اولیه", [(iid, init_qty, buy)])
@@ -148,6 +165,8 @@ def groups():
     if request.method == "POST":
         gid = to_int(request.form.get("id"))
         code, name = request.form.get("code", "").strip(), request.form.get("name", "").strip()
+        if not gid and not code:
+            code = new_code("item_groups", 10)
         if not code or not name:
             flash("کد و نام گروه لازم است.", "bad")
         elif q("SELECT 1 FROM item_groups WHERE code=? AND id<>?", (code, gid), one=True):
@@ -168,16 +187,18 @@ def groups():
 # ---------- excel
 XL_COLS = ["کد کالا", "نام کالا", "کد گروه", "نام گروه", "واحد فروش", "واحد بسته‌بندی", "تعداد در بسته", "نرخ خرید", "نرخ فروش",
            "موجودی اولیه (واحد فروش)", "بارکد", "فعال (1/0)"]
+# template for new items: no codes, the system assigns item and group codes
+TPL_COLS = ["نام کالا", "نام گروه", "واحد فروش", "واحد بسته‌بندی", "تعداد در بسته", "نرخ خرید", "نرخ فروش", "موجودی اولیه (واحد فروش)", "بارکد"]
 
 
-def _xl(rows, title, extra_cols=()):
+def _xl(rows, title, extra_cols=(), cols=None):
     from openpyxl import Workbook
     from openpyxl.styles import Font, PatternFill, Alignment
     wb = Workbook()
     ws = wb.active
     ws.title = title
     ws.sheet_view.rightToLeft = True
-    cols = XL_COLS + list(extra_cols)
+    cols = (cols or XL_COLS) + list(extra_cols)
     ws.append(cols)
     for c in ws[1]:
         c.font = Font(bold=True, color="FFFFFF", name="Vazirmatn")
@@ -185,7 +206,9 @@ def _xl(rows, title, extra_cols=()):
         c.alignment = Alignment(horizontal="center", wrap_text=True)
     for r in rows:
         ws.append(r)
-    for i, w in enumerate([12, 32, 10, 18, 10, 12, 10, 14, 14, 14, 16, 8] + [18] * len(extra_cols), 1):
+    widths = {"کد کالا": 12, "نام کالا": 34, "کد گروه": 10, "نام گروه": 18, "بارکد": 16, "فعال (1/0)": 8}
+    for i, c in enumerate(cols, 1):
+        w = widths.get(c, 14)
         ws.column_dimensions[ws.cell(1, i).column_letter].width = w
     ws.freeze_panes = "A2"
     buf = io.BytesIO()
@@ -196,7 +219,7 @@ def _xl(rows, title, extra_cols=()):
 
 @app.route("/items/template.xlsx")
 def items_template():
-    buf = _xl([["K001", "نمونه: شامپو ۲۰۰ میل", "G01", "بهداشتی", "باکس", "کارتن", 50, 600000, 850000, 500, "", 1]], "کالاها")
+    buf = _xl([["نمونه: شامپو ۲۰۰ میل", "بهداشتی", "باکس", "کارتن", 50, 600000, 850000, 500, ""]], "کالاها", cols=TPL_COLS)
     return send_file(buf, as_attachment=True, download_name="items_template.xlsx",
                      mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
 
@@ -244,8 +267,8 @@ def items_import():
             return redirect(url_for("items_import"))
         head = [_cell(h) for h in rows[0]]
         idx = {c: head.index(c) for c in XL_COLS if c in head}
-        if "کد کالا" not in idx or "نام کالا" not in idx:
-            flash("ستون‌های «کد کالا» و «نام کالا» در ردیف اول لازم است. فایل نمونه را دانلود کنید.", "bad")
+        if "نام کالا" not in idx:
+            flash("ستون «نام کالا» در ردیف اول لازم است. فایل نمونه را دانلود کنید.", "bad")
             return redirect(url_for("items_import"))
 
         def get(r, c):
@@ -256,11 +279,12 @@ def items_import():
             if not any(_cell(v) for v in r):
                 continue
             code, name = get(r, "کد کالا"), get(r, "نام کالا")
-            if not code:
-                errors.append((n, "کد کالا خالی است")); continue
-            if code in seen:
-                errors.append((n, f"کد {code} تکراری در فایل")); continue
-            seen.add(code)
+            if not code and not name:
+                errors.append((n, "نام کالا خالی است")); continue
+            key = ("c", code) if code else ("n", name)
+            if key in seen:
+                errors.append((n, f"کد {code} تکراری در فایل" if code else f"نام «{name}» تکراری در فایل")); continue
+            seen.add(key)
             nums = {}
             for c in ("تعداد در بسته", "نرخ خرید", "نرخ فروش", "موجودی اولیه (واحد فروش)"):
                 raw = get(r, c)
@@ -269,7 +293,10 @@ def items_import():
                     errors.append((n, f"«{c}» عدد معتبر نیست: {raw}")); break
                 nums[c] = v
             else:
-                ex = q("SELECT * FROM items WHERE code=?", (code,), one=True)
+                if code:
+                    ex = q("SELECT * FROM items WHERE code=?", (code,), one=True)
+                else:
+                    ex = q("SELECT * FROM items WHERE name=? ORDER BY id LIMIT 1", (name,), one=True)
                 if not ex and not name:
                     errors.append((n, f"نام کالای جدید {code} خالی است")); continue
                 plan.append((code, name, ex, get(r, "کد گروه"), get(r, "نام گروه"), get(r, "واحد فروش"), get(r, "واحد بسته‌بندی"),
@@ -280,10 +307,7 @@ def items_import():
             created = updated = priced = 0
             opening = []
             for code, name, ex, gcode, gname, unit, punit, nums, barcode, active in plan:
-                gid = None
-                if gcode:
-                    gid = v1("SELECT id FROM item_groups WHERE code=?", (gcode,)) or x(
-                        "INSERT INTO item_groups(code,name) VALUES(?,?)", (gcode, gname or gcode))
+                gid = group_by_name(gname, gcode) if (gcode or gname) else None
                 pack = nums["تعداد در بسته"]
                 if ex:
                     x("""UPDATE items SET name=COALESCE(NULLIF(?,''),name), group_id=COALESCE(?,group_id), unit=COALESCE(NULLIF(?,''),unit),
@@ -293,7 +317,7 @@ def items_import():
                     iid = ex["id"]; updated += 1
                 else:
                     iid = x("INSERT INTO items(code,name,group_id,unit,pack,pack_unit,barcode,active) VALUES(?,?,?,?,?,?,?,?)",
-                            (code, name, gid, unit or "باکس", pack or 1, punit or "کارتن", barcode or None,
+                            (code or new_code("items", 1001), name, gid, unit or "باکس", pack or 1, punit or "کارتن", barcode or None,
                              int(active) if active in ("0", "1") else 1))
                     created += 1
                 b, p = nums["نرخ خرید"], nums["نرخ فروش"]
