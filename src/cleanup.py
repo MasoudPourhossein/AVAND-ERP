@@ -11,7 +11,8 @@ USAGE = {
         ("SELECT COUNT(*) FROM consignments WHERE visitor_id=?", "فاکتور امانی"),
         ("SELECT COUNT(*) FROM tr_docs WHERE person_id=? OR visitor_id=?", "سند دریافت/پرداخت"),
         ("SELECT COUNT(*) FROM cheques WHERE person_id=? OR holder_id=?", "چک"),
-        ("SELECT COUNT(*) FROM voucher_lines WHERE person_id=?", "ردیف سند حسابداری")], "persons"),
+        ("SELECT COUNT(*) FROM voucher_lines WHERE person_id=?", "ردیف سند حسابداری"),
+        ("SELECT COUNT(*) FROM items WHERE supplier_id=?", "کالا")], "persons"),
     "item": ("items", "کالا", [
         ("SELECT COUNT(DISTINCT inv_id) FROM sales_lines WHERE item_id=?", "فاکتور فروش"),
         ("SELECT COUNT(DISTINCT pur_id) FROM purchase_lines WHERE item_id=?", "فاکتور خرید"),

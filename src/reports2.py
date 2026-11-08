@@ -228,12 +228,13 @@ def fin_debtors():
 def rep_monthly():
     """فروش ماهانه یک سال به تفکیک ویزیتور / مشتری / گروه کالا / کالا"""
     y = to_int(request.args.get("year")) or int(today_j()[:4])
-    by = request.args.get("by") if request.args.get("by") in ("visitor", "customer", "group", "item") else "visitor"
+    by = request.args.get("by") if request.args.get("by") in ("visitor", "customer", "group", "item", "supplier") else "visitor"
     val = request.args.get("val") if request.args.get("val") in ("amount", "qty") else "amount"
     key = {"visitor": ("COALESCE(v.code,'-')", "COALESCE(v.name,'بدون ویزیتور')", "LEFT JOIN persons v ON v.id=s.visitor_id"),
            "customer": ("c.code", "c.name", "JOIN persons c ON c.id=s.customer_id"),
            "group": ("COALESCE(g.code,'-')", "COALESCE(g.name,'بدون گروه')", "JOIN items i ON i.id=l.item_id LEFT JOIN item_groups g ON g.id=i.group_id"),
-           "item": ("i.code", "i.name", "JOIN items i ON i.id=l.item_id")}[by]
+           "item": ("i.code", "i.name", "JOIN items i ON i.id=l.item_id"),
+           "supplier": ("COALESCE(sp.code,'-')", "COALESCE(sp.name,'بدون تامین‌کننده')", "JOIN items i ON i.id=l.item_id LEFT JOIN persons sp ON sp.id=i.supplier_id")}[by]
     expr = "(l.qty*l.price-l.disc)*s.sg" if val == "amount" else "l.qty*s.sg"
     rs = q(f"""SELECT {key[0]} k, {key[1]} n, CAST(SUBSTRING(s.date,6,2) AS INT) m, SUM({expr}) a
                FROM sales_lines l JOIN v_si s ON s.id=l.inv_id {key[2]} WHERE s.date LIKE ? GROUP BY 1,2,3""", (f"{y}/%",))
@@ -243,10 +244,10 @@ def rep_monthly():
     rows = [[k[0], k[1]] + v + [sum(v)] for k, v in sorted(R.items(), key=lambda kv: -sum(kv[1]))]
     tot = ["جمع", ""] + [sum(r[2 + i] for r in rows) for i in range(13)]
     kind = "money" if val == "amount" else "num"
-    lab = {"visitor": "ویزیتور", "customer": "مشتری", "group": "گروه کالا", "item": "کالا"}[by]
+    lab = {"visitor": "ویزیتور", "customer": "مشتری", "group": "گروه کالا", "item": "کالا", "supplier": "تامین‌کننده کالا"}[by]
     spec = {"title": f"فروش ماهانه سال {y} به تفکیک {lab}", "sub": "مبلغ = فروش پس از تخفیف ردیف، بدون مالیات (برگشت‌ها کسر شده)" if val == "amount" else "تعداد به واحد فروش",
             "filters": [], "selects": [("year", [(str(i), str(i)) for i in range(int(today_j()[:4]), int(today_j()[:4]) - 6, -1)], str(y)),
-                                       ("by", [("visitor", "ویزیتور"), ("customer", "مشتری"), ("group", "گروه کالا"), ("item", "کالا")], by),
+                                       ("by", [("visitor", "ویزیتور"), ("customer", "مشتری"), ("group", "گروه کالا"), ("item", "کالا"), ("supplier", "تامین‌کننده کالا")], by),
                                        ("val", [("amount", "مبلغ"), ("qty", "تعداد")], val)],
             "charts": [{"id": "cm", "type": "bar", "title": "جمع ماهانه", "labels": MONTHS, "sets": [("فروش", tot[2:14])]}],
             "sections": [{"cols": [("کد", "text"), (lab, "text")] + [(m, kind) for m in (MONTHS)] + [("جمع سال", kind)],

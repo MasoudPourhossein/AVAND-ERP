@@ -203,3 +203,7 @@ FROM voucher_lines vl JOIN vouchers v ON v.id=vl.voucher_id JOIN accounts a ON a
 
 -- v4: payment term per person (days after invoice date when the invoice has no due date)
 ALTER TABLE persons ADD COLUMN IF NOT EXISTS credit_days INT NOT NULL DEFAULT 0;
+
+-- v4: every item belongs to a supplier, its code starts with the supplier's code
+ALTER TABLE items ADD COLUMN IF NOT EXISTS supplier_id INT REFERENCES persons(id);
+CREATE INDEX IF NOT EXISTS ix_items_supplier ON items(supplier_id);

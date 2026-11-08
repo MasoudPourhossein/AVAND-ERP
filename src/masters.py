@@ -20,6 +20,55 @@ def new_code(table, start):
     return str(max(int(m or 0) + 1, start))
 
 
+def item_code(supplier_id=None):
+    """supplier's item: <supplier code>-001, -002 ... ; no supplier: numeric 1001, 1002 ..."""
+    sc = v1("SELECT code FROM persons WHERE id=?", (supplier_id,)) if supplier_id else None
+    if not sc:
+        return new_code("items", 1001)
+    n = 0
+    for r in q("SELECT code FROM items WHERE code LIKE ?", (sc + "-%",)):
+        tail = r["code"][len(sc) + 1:]
+        if tail.isdigit():
+            n = max(n, int(tail))
+    while True:
+        n += 1
+        c = f"{sc}-{n:03d}"
+        if not v1("SELECT COUNT(*) FROM items WHERE code=?", (c,)):
+            return c
+
+
+def suppliers():
+    return q("SELECT id, code, name FROM persons WHERE is_supplier=1 ORDER BY code")
+
+
+def supplier_by(code="", name=""):
+    """find a supplier by code or exact name; create it if only the name is new"""
+    if code:
+        sid = v1("SELECT id FROM persons WHERE code=?", (code,))
+        if sid:
+            x("UPDATE persons SET is_supplier=1 WHERE id=?", (sid,))
+            return sid
+    if name:
+        sid = v1("SELECT id FROM persons WHERE name=? ORDER BY is_supplier DESC, id LIMIT 1", (name,))
+        if sid:
+            x("UPDATE persons SET is_supplier=1 WHERE id=?", (sid,))
+            return sid
+        return x("INSERT INTO persons(code,name,is_supplier,active,created) VALUES(?,?,1,1,?)", (code or new_person_code("supplier"), name, today_j()))
+    return None
+
+
+def recode_items(supplier_id):
+    """give every item of a supplier a code with the supplier's prefix (ids never change, documents keep working)"""
+    sc = v1("SELECT code FROM persons WHERE id=?", (supplier_id,))
+    n = 0
+    for it in q("SELECT id, code FROM items WHERE supplier_id=? ORDER BY code", (supplier_id,)):
+        if it["code"].startswith(sc + "-"):
+            continue
+        x("UPDATE items SET code=? WHERE id=?", (item_code(supplier_id), it["id"]))
+        n += 1
+    return n
+
+
 def group_by_name(name, code=""):
     """find a group by code or exact name; create it (auto code) if missing"""
     if code:
@@ -47,14 +96,15 @@ def items():
         date = norm_date(request.form.get("date")) or today_j()
         wh = to_int(request.form.get("wh_id")) or default_wh()
         gid = to_int(request.form.get("group_id")) or None
-        code = code or new_code("items", 1001)
+        sid = to_int(request.form.get("supplier_id")) or None
+        code = code or item_code(sid)
         if not name:
             flash("نام کالا لازم است.", "bad")
         elif q("SELECT 1 FROM items WHERE code=?", (code,), one=True):
             flash("این کد کالا قبلا ثبت شده است.", "bad")
         else:
-            iid = x("INSERT INTO items(code,name,group_id,unit,pack,pack_unit,barcode,vat_rate) VALUES(?,?,?,?,?,?,?,?)",
-                    (code, name, gid, unit, pack, pack_unit, request.form.get("barcode", "").strip() or None, _vat_in()))
+            iid = x("INSERT INTO items(code,name,group_id,unit,pack,pack_unit,barcode,vat_rate,supplier_id) VALUES(?,?,?,?,?,?,?,?,?)",
+                    (code, name, gid, unit, pack, pack_unit, request.form.get("barcode", "").strip() or None, _vat_in(), sid))
             if price or buy:
                 x("INSERT INTO prices(item_id,date,price,buy) VALUES(?,?,?,?)", (iid, date, price, buy))
             msg = f"کالا «{name}» با کد {code} ثبت شد."
@@ -67,12 +117,15 @@ def items():
         return redirect(url_for("items"))
     wh = to_int(request.args.get("wh")) or None
     gid = to_int(request.args.get("group")) or None
+    sup = to_int(request.args.get("supplier")) or None
     rows = stock_rows(wh_id=wh)
     if gid:
         rows = [r for r in rows if r["group_id"] == gid]
+    if sup:
+        rows = [r for r in rows if r["supplier_id"] == sup]
     if request.args.get("inactive") != "1":
         rows = [r for r in rows if r["active"]]
-    return render_template("items.html", rows=rows, groups=_groups(), whs=warehouses_list(), wh=wh, gid=gid)
+    return render_template("items.html", rows=rows, groups=_groups(), whs=warehouses_list(), wh=wh, gid=gid, sups=suppliers(), sup=sup)
 
 
 @app.route("/items/<int:iid>", methods=["GET", "POST"])
@@ -80,14 +133,18 @@ def item_edit(iid):
     it = q("SELECT * FROM items WHERE id=?", (iid,), one=True) or abort(404)
     if request.method == "POST":
         name, code = request.form.get("name", "").strip(), request.form.get("code", "").strip() or it["code"]
+        sid = to_int(request.form.get("supplier_id")) or None
+        if request.form.get("recode") and sid and not code.startswith((v1("SELECT code FROM persons WHERE id=?", (sid,)) or "") + "-"):
+            code = item_code(sid)
         if code != it["code"] and q("SELECT 1 FROM items WHERE code=? AND id<>?", (code, iid), one=True):
             flash("این کد کالا برای کالای دیگری ثبت شده است.", "bad")
         elif name:
-            x("""UPDATE items SET code=?, name=?, group_id=?, unit=?, pack=?, pack_unit=?, barcode=?, active=?, note=?, vat_rate=? WHERE id=?""",
+            x("""UPDATE items SET code=?, name=?, group_id=?, unit=?, pack=?, pack_unit=?, barcode=?, active=?, note=?, vat_rate=?, supplier_id=?
+                 WHERE id=?""",
               (code, name, to_int(request.form.get("group_id")) or None, request.form.get("unit", "").strip() or "باکس",
                max(to_int(request.form.get("pack"), it["pack"]), 1), request.form.get("pack_unit", "").strip() or "کارتن",
                request.form.get("barcode", "").strip() or None, 1 if request.form.get("active") else 0,
-               request.form.get("note", "").strip() or None, _vat_in(), iid))
+               request.form.get("note", "").strip() or None, _vat_in(), sid, iid))
             db().commit()
             flash("ویرایش ذخیره شد.", "ok")
         return redirect(url_for("item_edit", iid=iid))
@@ -96,7 +153,7 @@ def item_edit(iid):
     by_wh = q("""SELECT w.name, COALESCE(SUM(m.qty),0) st FROM warehouses w LEFT JOIN stock_moves m ON m.wh_id=w.id AND m.item_id=?
                  GROUP BY w.id, w.name, w.is_default, w.code ORDER BY w.is_default DESC, w.code""", (iid,))
     return render_template("item_edit.html", it=it, hist=hist, stock=row["st"], price=price_at(iid, today_j()),
-                           buy=buy_at(iid, today_j()), row=row, groups=_groups(), by_wh=by_wh)
+                           buy=buy_at(iid, today_j()), row=row, groups=_groups(), by_wh=by_wh, sups=suppliers())
 
 
 @app.route("/prices", methods=["GET", "POST"])
@@ -185,10 +242,10 @@ def groups():
 
 
 # ---------- excel
-XL_COLS = ["کد کالا", "نام کالا", "کد گروه", "نام گروه", "واحد فروش", "واحد بسته‌بندی", "تعداد در بسته", "نرخ خرید", "نرخ فروش",
-           "موجودی اولیه (واحد فروش)", "بارکد", "فعال (1/0)"]
+XL_COLS = ["کد کالا", "نام کالا", "کد تامین‌کننده", "نام تامین‌کننده", "کد گروه", "نام گروه", "واحد فروش", "واحد بسته‌بندی", "تعداد در بسته",
+           "نرخ خرید", "نرخ فروش", "موجودی اولیه (واحد فروش)", "بارکد", "فعال (1/0)"]
 # template for new items: no codes, the system assigns item and group codes
-TPL_COLS = ["نام کالا", "نام گروه", "واحد فروش", "واحد بسته‌بندی", "تعداد در بسته", "نرخ خرید", "نرخ فروش", "موجودی اولیه (واحد فروش)", "بارکد"]
+TPL_COLS = ["نام کالا", "نام تامین‌کننده", "نام گروه", "واحد فروش", "واحد بسته‌بندی", "تعداد در بسته", "نرخ خرید", "نرخ فروش", "موجودی اولیه (واحد فروش)", "بارکد"]
 
 
 def _xl(rows, title, extra_cols=(), cols=None):
@@ -206,7 +263,7 @@ def _xl(rows, title, extra_cols=(), cols=None):
         c.alignment = Alignment(horizontal="center", wrap_text=True)
     for r in rows:
         ws.append(r)
-    widths = {"کد کالا": 12, "نام کالا": 34, "کد گروه": 10, "نام گروه": 18, "بارکد": 16, "فعال (1/0)": 8}
+    widths = {"کد کالا": 14, "نام کالا": 34, "کد تامین‌کننده": 12, "نام تامین‌کننده": 22, "کد گروه": 10, "نام گروه": 18, "بارکد": 16, "فعال (1/0)": 8}
     for i, c in enumerate(cols, 1):
         w = widths.get(c, 14)
         ws.column_dimensions[ws.cell(1, i).column_letter].width = w
@@ -219,7 +276,7 @@ def _xl(rows, title, extra_cols=(), cols=None):
 
 @app.route("/items/template.xlsx")
 def items_template():
-    buf = _xl([["نمونه: شامپو ۲۰۰ میل", "بهداشتی", "باکس", "کارتن", 50, 600000, 850000, 500, ""]], "کالاها", cols=TPL_COLS)
+    buf = _xl([["نمونه: شامپو ۲۰۰ میل", "پخش نمونه", "بهداشتی", "باکس", "کارتن", 50, 600000, 850000, 500, ""]], "کالاها", cols=TPL_COLS)
     return send_file(buf, as_attachment=True, download_name="items_template.xlsx",
                      mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
 
@@ -230,7 +287,7 @@ def items_export():
     gmap = {g_["id"]: g_ for g_ in _groups()}
     for r in stock_rows():
         g_ = gmap.get(r["group_id"])
-        rows.append([r["code"], r["name"], g_["code"] if g_ else "", g_["name"] if g_ else "", r["unit"], r["pack_unit"], r["pack"],
+        rows.append([r["code"], r["name"], r["sup_code"] or "", r["sup_name"] or "", g_["code"] if g_ else "", g_["name"] if g_ else "", r["unit"], r["pack_unit"], r["pack"],
                      int(r["buy"] or 0), int(r["price"] or 0), None, r["barcode"] or "", r["active"], int(r["st"])])
     buf = _xl(rows, "کالاها", ["موجودی فعلی (فقط نمایش)"])
     return send_file(buf, as_attachment=True, download_name=f"items_{today_j().replace('/', '')}.xlsx",
@@ -299,26 +356,27 @@ def items_import():
                     ex = q("SELECT * FROM items WHERE name=? ORDER BY id LIMIT 1", (name,), one=True)
                 if not ex and not name:
                     errors.append((n, f"نام کالای جدید {code} خالی است")); continue
-                plan.append((code, name, ex, get(r, "کد گروه"), get(r, "نام گروه"), get(r, "واحد فروش"), get(r, "واحد بسته‌بندی"),
+                plan.append((code, name, ex, (get(r, "کد تامین‌کننده"), get(r, "نام تامین‌کننده")), get(r, "کد گروه"), get(r, "نام گروه"), get(r, "واحد فروش"), get(r, "واحد بسته‌بندی"),
                              nums, get(r, "بارکد"), get(r, "فعال (1/0)")))
         if errors:
             result = {"errors": errors}
         else:
             created = updated = priced = 0
             opening = []
-            for code, name, ex, gcode, gname, unit, punit, nums, barcode, active in plan:
+            for code, name, ex, sup, gcode, gname, unit, punit, nums, barcode, active in plan:
                 gid = group_by_name(gname, gcode) if (gcode or gname) else None
+                sid = supplier_by(*sup) if (sup[0] or sup[1]) else None
                 pack = nums["تعداد در بسته"]
                 if ex:
                     x("""UPDATE items SET name=COALESCE(NULLIF(?,''),name), group_id=COALESCE(?,group_id), unit=COALESCE(NULLIF(?,''),unit),
                          pack_unit=COALESCE(NULLIF(?,''),pack_unit), pack=COALESCE(?,pack), barcode=COALESCE(NULLIF(?,''),barcode),
-                         active=COALESCE(?,active) WHERE id=?""",
-                      (name, gid, unit, punit, pack if pack else None, barcode, int(active) if active in ("0", "1") else None, ex["id"]))
+                         active=COALESCE(?,active), supplier_id=COALESCE(?,supplier_id) WHERE id=?""",
+                      (name, gid, unit, punit, pack if pack else None, barcode, int(active) if active in ("0", "1") else None, sid, ex["id"]))
                     iid = ex["id"]; updated += 1
                 else:
-                    iid = x("INSERT INTO items(code,name,group_id,unit,pack,pack_unit,barcode,active) VALUES(?,?,?,?,?,?,?,?)",
-                            (code or new_code("items", 1001), name, gid, unit or "باکس", pack or 1, punit or "کارتن", barcode or None,
-                             int(active) if active in ("0", "1") else 1))
+                    iid = x("INSERT INTO items(code,name,group_id,unit,pack,pack_unit,barcode,active,supplier_id) VALUES(?,?,?,?,?,?,?,?,?)",
+                            (code or item_code(sid), name, gid, unit or "باکس", pack or 1, punit or "کارتن", barcode or None,
+                             int(active) if active in ("0", "1") else 1, sid))
                     created += 1
                 b, p = nums["نرخ خرید"], nums["نرخ فروش"]
                 if b is not None or p is not None:
@@ -442,9 +500,18 @@ def person(pid):
     invs = q(INV_SQL + " WHERE s.customer_id=? OR s.visitor_id=? ORDER BY s.date DESC, s.no DESC LIMIT 30", (pid, pid))
     cons = q(CONS_SQL + " WHERE c.visitor_id=? ORDER BY c.date DESC, c.no DESC LIMIT 15", (pid,)) if p["is_visitor"] else []
     purs = q("SELECT * FROM v_pu u WHERE u.supplier_id=? ORDER BY u.date DESC, u.no DESC LIMIT 20", (pid,)) if p["is_supplier"] else []
+    sitems = [r for r in stock_rows() if r["supplier_id"] == pid] if p["is_supplier"] else []
     custs = q(f"SELECT p.id, p.code, p.name, p.mobile, {BAL_SQL} AS receivable FROM persons p WHERE p.visitor_id=? ORDER BY p.code", (pid,)) \
         if p["is_visitor"] else []
-    return render_template("person.html", p=p, st=st, invs=invs, cons=cons, purs=purs, custs=custs, visitors=visitors_list())
+    return render_template("person.html", p=p, st=st, invs=invs, cons=cons, purs=purs, custs=custs, visitors=visitors_list(), sitems=sitems)
+
+
+@app.post("/persons/<int:pid>/recode-items")
+def supplier_recode(pid):
+    n = recode_items(pid)
+    db().commit()
+    flash(f"کد {n} کالا با پیشوند کد تامین‌کننده بازسازی شد." if n else "کد همه کالاهای این تامین‌کننده درست است.", "ok")
+    return redirect(url_for("person", pid=pid))
 
 
 @app.route("/api/persons", methods=["GET", "POST"])

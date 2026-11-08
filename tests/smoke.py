@@ -269,11 +269,33 @@ with A.app.test_request_context():
 for u in ["/reports/fin/due", f"/reports/fin/due?as=customer&person={c1}", f"/reports/fin/due?as=visitor&person={vis}", "/reports/fin/due?as=supplier",
           f"/reports/fin/due?as=supplier&person={sup}", "/reports/fin/due?to=1405/08/10", "/reports/fin/cashflow", "/reports/fin/cashflow?days=365",
           "/reports/fin/debtors", "/reports/fin/debtors?side=all", "/reports/monthly?year=1405", "/reports/monthly?year=1405&by=item&val=qty",
-          "/reports/monthly?year=1405&by=group", "/reports/monthly?year=1405&by=customer", "/reports/idle", "/reports/fin/vat?from=1405/07/01&to=1405/12/29"]:
+          "/reports/monthly?year=1405&by=group", "/reports/monthly?year=1405&by=supplier", "/reports/monthly?year=1405&by=customer", "/reports/idle", "/reports/fin/vat?from=1405/07/01&to=1405/12/29"]:
     G(u)
 assert "1405/09/15" in T(G(f"/reports/fin/due?as=customer&person={c1}&to=1405/09/01"))
 for u in ["/reports/fin/due?fmt=xlsx", "/reports/fin/cashflow?fmt=pdf", "/reports/monthly?year=1405&fmt=xlsx", "/reports/fin/vat?fmt=xlsx"]:
     assert cl.get(u).status_code == 200, u
+# items belong to suppliers; purchase makes the supplier a creditor
+from openpyxl import load_workbook  # noqa: E402
+assert one(f"SELECT supplier_id FROM items WHERE id={k1}") == sup
+sc = one(f"SELECT code FROM persons WHERE id={sup}")
+P("/items", {"code": "", "name": "شامپو بزرگ", "supplier_id": sup, "unit": "عدد", "pack": 1, "buy": 10, "price": 20, "date": "1405/09/01"})
+assert one("SELECT code FROM items WHERE name='شامپو بزرگ'") == sc + "-001"
+P("/items", {"code": "", "name": "شامپو کوچک", "supplier_id": sup, "unit": "عدد", "pack": 1, "date": "1405/09/01"})
+assert one("SELECT code FROM items WHERE name='شامپو کوچک'") == sc + "-002"
+P("/persons", {"name": "تامین دوم", "is_supplier": "1", "active": "1"}); sup2 = one("SELECT id FROM persons WHERE name='تامین دوم'")
+r = P("/purchases/new", {"date": "1405/09/01", "wh_id": w1, "party_id": sup2, "kind": "buy", "item_id": [k1], "ctn": [0], "box": [5], "price": [100]})
+assert "متعلق به تامین‌کننده" in T(r)
+pb = accbal("payable", person_id=sup2)
+P("/items", {"code": "", "name": "کالای آزاد", "unit": "عدد", "pack": 1, "date": "1405/09/01"})
+P("/purchases/new", {"date": "1405/09/01", "wh_id": w1, "party_id": sup2, "kind": "buy", "item_id": [one("SELECT id FROM items WHERE name='کالای آزاد'")],
+                     "ctn": [0], "box": [10], "price": [5], "disc": [0], "vat": [0]})
+assert accbal("payable", person_id=sup2) == pb - 50 and one(f"SELECT COUNT(*) FROM items WHERE supplier_id={sup2}") == 1
+assert "50" in T(G("/persons?kind=supplier")) and "بستانکار" in T(G(f"/persons/{sup2}"))
+P(f"/persons/{sup2}/recode-items", {}); sc2 = one(f"SELECT code FROM persons WHERE id={sup2}")
+assert one("SELECT code FROM items WHERE name='کالای آزاد'") == sc2 + "-001"
+assert "نام تامین‌کننده" in [c.value for c in load_workbook(io.BytesIO(cl.get("/items/export.xlsx").data)).active[1]]
+G(f"/items?supplier={sup}"); G(f"/persons/{sup}"); G(f"/items/{k1}"); G("/purchases/new")
+gl_ok()
 print("V4 OK")
 # ================= deletion of base data
 assert "استفاده شده" in T(P(f"/delete/person/{c1}", {})) and one(f"SELECT COUNT(*) FROM persons WHERE id={c1}") == 1
@@ -321,10 +343,14 @@ from openpyxl import load_workbook  # noqa: E402
 hd = [c.value for c in load_workbook(io.BytesIO(cl.get("/items/template.xlsx").data)).active[1]]
 assert "کد کالا" not in hd and "نام کالا" in hd
 wb = Workbook(); ws = wb.active; ws.append(hd)
-ws.append(["دستمال کاغذی", "سلولزی جدید", "بسته", "کارتن", 12, 40, 70, 24, ""]); ws.append(["کالای بی‌کد", "", "", "", "", "", 11, "", ""])
+ws.append(["دستمال کاغذی", "", "سلولزی جدید", "بسته", "کارتن", 12, 40, 70, 24, ""]); ws.append(["کالای بی‌کد", "", "", "", "", "", "", 11, "", ""])
+ws.append(["آبمیوه", "پخش جدید", "نوشیدنی", "بطری", "کارتن", 6, 30, 50, 0, ""])
 b = io.BytesIO(); wb.save(b); b.seek(0)
 r = ok(cl.post("/items/import", data={"file": (b, "t.xlsx"), "date": "1405/09/02", "wh_id": w1}, content_type="multipart/form-data", follow_redirects=True), "imp2")
-assert "کالای جدید: 1" in T(r) and "به‌روزرسانی: 1" in T(r), T(r)[:400]
+assert "کالای جدید: 2" in T(r) and "به‌روزرسانی: 1" in T(r), T(r)[:400]
+nsup = one("SELECT id FROM persons WHERE name='پخش جدید' AND is_supplier=1"); nsc = one(f"SELECT code FROM persons WHERE id={nsup}")
+assert one("SELECT code FROM items WHERE name='آبمیوه'") == nsc + "-001" and one("SELECT supplier_id FROM items WHERE name='آبمیوه'") == nsup
+assert "استفاده شده" in T(P(f"/delete/person/{nsup}", {}))
 nc = one("SELECT code FROM items WHERE name='دستمال کاغذی'"); assert nc.isdigit() and int(nc) == int(ac1) + 1
 assert one("SELECT g.code FROM items i JOIN item_groups g ON g.id=i.group_id WHERE i.name='دستمال کاغذی'").isdigit()
 assert one("SELECT SUM(qty) FROM stock_moves m JOIN items i ON i.id=m.item_id WHERE i.name='دستمال کاغذی'") == 24

@@ -198,6 +198,11 @@ def _save_purchase(pid=None):
     disc = max(to_int(request.form.get("discount")), 0)
     if disc > sum(qt * p - d for _, qt, p, d, _v in lines):
         raise ValueError("تخفیف از جمع فاکتور بیشتر است.")
+    for it in q("""SELECT i.id, i.name, i.supplier_id, p.name sname FROM items i LEFT JOIN persons p ON p.id=i.supplier_id
+                    WHERE i.id = ANY(?)""", ([l[0] for l in lines],)):
+        if it["supplier_id"] and it["supplier_id"] != sid:
+            raise ValueError(f"کالای «{it['name']}» متعلق به تامین‌کننده «{it['sname']}» است.")
+    x("UPDATE items SET supplier_id=? WHERE id = ANY(?) AND supplier_id IS NULL", (sid, [l[0] for l in lines]))
     hdr = (kind, date, sid, wh, request.form.get("ref_no", "").strip() or None, disc, request.form.get("note"),
            norm_date(request.form.get("due_date")), request.form.get("pay_terms") or None)
     if pid:

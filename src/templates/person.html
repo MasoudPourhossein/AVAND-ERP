@@ -30,6 +30,12 @@
 {% for u in custs %}<tr><td>{{ u.code }}</td><td><a href="/persons/{{ u.id }}">{{ u.name }}</a></td><td dir="ltr" style="text-align:right">{{ u.mobile or '' }}</td><td class="n">{{ u.receivable|m }}</td></tr>{% endfor %}</table></div>{% endif %}
 {% if cons %}<div class="card"><h3>{{ icon('hourglass') }} امانی‌ها</h3><table><tr><th>امانی</th><th>تاریخ</th><th>وضعیت</th><th class="n">ارزش</th></tr>
 {% for c in cons %}<tr><td><a href="/amani/{{ c.id }}">{{ c.no }}</a></td><td>{{ c.date }}</td><td>{% if c.status=='open' %}<span class="tag open">باز</span>{% else %}<span class="tag ok">تسویه</span>{% endif %}</td><td class="n">{{ c.amani_value|m }}</td></tr>{% endfor %}</table></div>{% endif %}
+{% if p.is_supplier %}<div class="card" style="grid-column:1/-1"><h3>{{ icon('package') }} کالاهای این تامین‌کننده ({{ sitems|length }})<span class="sp"></span>
+{% if can('items') %}<a class="btn sm s" href="/items?supplier={{ p.id }}">فهرست کامل</a>
+<form method="post" action="/persons/{{ p.id }}/recode-items" style="display:inline" onsubmit="return confirm('کد کالاهای این تامین‌کننده که با {{ p.code }}- شروع نمی‌شوند بازسازی شود؟')"><button class="btn sm o">بازسازی کد کالاها با پیشوند {{ p.code }}</button></form>{% endif %}</h3>
+<table><tr><th>کد</th><th>کالا</th><th class="n">نرخ خرید</th><th>موجودی</th></tr>
+{% for r in sitems[:50] %}<tr><td>{{ r.code }}</td><td><a href="/items/{{ r.id }}">{{ r.name }}</a></td><td class="n">{{ r.cost|m }}</td><td>{{ pkr(r.st, r) }}</td></tr>
+{% else %}<tr><td colspan="4" class="muted">کالایی به این تامین‌کننده وصل نیست. هنگام تعریف کالا یا اولین خرید، کالا به تامین‌کننده وصل می‌شود.</td></tr>{% endfor %}</table></div>{% endif %}
 {% if purs %}<div class="card"><h3>{{ icon('inbox') }} خریدها</h3><table><tr><th>شماره</th><th>تاریخ</th><th>نوع</th><th class="n">مبلغ</th></tr>
 {% for u in purs %}<tr><td><a href="/purchases/{{ u.id }}">{{ u.no }}</a></td><td>{{ u.date }}</td><td>{{ 'برگشت' if u.kind=='return' else 'خرید' }}</td><td class="n">{{ u.total|m }}</td></tr>{% endfor %}</table></div>{% endif %}
 </div>

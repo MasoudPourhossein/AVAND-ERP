@@ -11,6 +11,7 @@
 <form method="post" class="f" id="nf" style="margin-top:14px">
   <div><label>کد کالا (خالی = خودکار)</label><input name="code" placeholder="خودکار"></div>
   <div style="grid-column:span 2"><label>نام کالا</label><input name="name" required></div>
+  <div><label>تامین‌کننده (کد کالا با کد او شروع می‌شود)</label><select name="supplier_id"><option value="">—</option>{% for s in sups %}<option value="{{ s.id }}">{{ s.code }} - {{ s.name }}</option>{% endfor %}</select></div>
   <div><label>گروه</label><select name="group_id"><option value="">—</option>{% for g_ in groups %}<option value="{{ g_.id }}">{{ g_.code }} - {{ g_.name }}</option>{% endfor %}</select></div>
   <div><label>بارکد</label><input name="barcode"></div>
   <div><label>نرخ مالیات % (خالی = پیش‌فرض)</label><input name="vat_rate" inputmode="decimal"></div>
@@ -29,16 +30,17 @@
 <div class="card">
 <form class="bar no-print" method="get">
   <select name="wh"><option value="">همه انبارها</option>{% for w in whs %}<option value="{{ w.id }}" {{ 'selected' if w.id==wh }}>{{ w.name }}</option>{% endfor %}</select>
+  <select name="supplier"><option value="">همه تامین‌کنندگان</option>{% for s in sups %}<option value="{{ s.id }}" {{ 'selected' if s.id==sup }}>{{ s.name }}</option>{% endfor %}</select>
   <select name="group"><option value="">همه گروه‌ها</option>{% for g_ in groups %}<option value="{{ g_.id }}" {{ 'selected' if g_.id==gid }}>{{ g_.name }}</option>{% endfor %}</select>
   <label style="margin:0;display:flex;gap:6px;align-items:center"><input type="checkbox" name="inactive" value="1" {{ 'checked' if request.args.inactive=='1' }} style="width:auto"> نمایش غیرفعال‌ها</label>
   <button class="btn">نمایش</button><span class="sp"></span><input placeholder="جستجو..." oninput="flt(this)"></form>
-<table id="t"><tr><th>کد</th><th>نام کالا</th><th>گروه</th><th>بسته‌بندی</th><th class="n">نرخ خرید</th><th class="n">نرخ فروش</th><th class="n">سود واحد</th><th>موجودی {{ 'این انبار' if wh else 'انبارها' }}</th><th>امانی نزد ویزیتور</th><th class="no-print"></th></tr>
+<table id="t"><tr><th>کد</th><th>نام کالا</th><th>تامین‌کننده</th><th>گروه</th><th>بسته‌بندی</th><th class="n">نرخ خرید</th><th class="n">نرخ فروش</th><th class="n">سود واحد</th><th>موجودی {{ 'این انبار' if wh else 'انبارها' }}</th><th>امانی نزد ویزیتور</th><th class="no-print"></th></tr>
 {% for r in rows %}
-<tr {% if not r.active %}style="opacity:.55"{% endif %}><td>{{ r.code }}</td><td>{{ r.name }}</td><td>{{ r.group_name or '' }}</td><td>{% if r.pack > 1 %}هر {{ r.pack_unit }} {{ r.pack }} {{ r.unit }}{% else %}{{ r.unit }}{% endif %}</td>
+<tr {% if not r.active %}style="opacity:.55"{% endif %}><td>{{ r.code }}</td><td>{{ r.name }}</td><td>{{ r.sup_name or '' }}</td><td>{{ r.group_name or '' }}</td><td>{% if r.pack > 1 %}هر {{ r.pack_unit }} {{ r.pack }} {{ r.unit }}{% else %}{{ r.unit }}{% endif %}</td>
 <td class="n">{{ r.cost|m }}</td><td class="n">{{ r.price|m }}</td><td class="n">{% if r.price and r.cost %}{{ (r.price-r.cost)|m }} <small class="muted">({{ ((r.price-r.cost)*100/r.price)|round(1) }}%)</small>{% else %}—{% endif %}</td>
 <td>{% if r.st<=0 %}<span class="tag bad">{{ pkr(r.st, r) }}</span>{% else %}{{ pkr(r.st, r) }}{% endif %}</td><td>{{ pkr(r.open_amani, r) }}</td>
 <td class="no-print"><a class="btn sm s" href="/items/{{ r.id }}">ویرایش / نرخ</a>{% if can("rep_stock") %} <a class="btn sm s" href="/reports/kardex?item={{ r.id }}">کاردکس</a>{% endif %}</td></tr>
-{% else %}<tr><td colspan="10" class="muted">کالایی نیست.</td></tr>{% endfor %}</table></div>
+{% else %}<tr><td colspan="11" class="muted">کالایی نیست.</td></tr>{% endfor %}</table></div>
 {% endblock %}
 {% block js %}<script>
 function flt(i){const v=i.value.trim();document.querySelectorAll('#t tr').forEach((r,k)=>{if(k)r.style.display=r.innerText.includes(v)?'':'none'})}

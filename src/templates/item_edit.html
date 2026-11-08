@@ -17,6 +17,8 @@
 <div class="card"><h3>ویرایش مشخصات</h3>
 <form method="post" class="f"><div><label>کد کالا</label><input name="code" value="{{ it.code }}"></div>
 <div style="grid-column:span 2"><label>نام کالا</label><input name="name" value="{{ it.name }}"></div>
+<div><label>تامین‌کننده</label><select name="supplier_id"><option value="">—</option>{% for s in sups %}<option value="{{ s.id }}" {{ 'selected' if s.id==it.supplier_id }}>{{ s.code }} - {{ s.name }}</option>{% endfor %}</select></div>
+<div><label style="display:flex;gap:8px;align-items:center;color:var(--txt)"><input type="checkbox" name="recode" value="1" style="width:auto"> کد کالا بر اساس کد تامین‌کننده ساخته شود</label></div>
 <div><label>گروه</label><select name="group_id"><option value="">—</option>{% for g_ in groups %}<option value="{{ g_.id }}" {{ 'selected' if g_.id==it.group_id }}>{{ g_.code }} - {{ g_.name }}</option>{% endfor %}</select></div>
 <div><label>بارکد</label><input name="barcode" value="{{ it.barcode or '' }}"></div>
 <div><label>واحد فروش</label><input name="unit" value="{{ it.unit }}"></div>

@@ -78,9 +78,10 @@
 const MODE={{ mode|tojson }},OUT={{ OUT|tojson }},HASPRICE={{ HASPRICE|tojson }},FULL={{ FULL|tojson }},VATON={{ (vat_on or false)|tojson }},VATDEF={{ (vat_def or 0)|tojson }};
 const INIT={{ init_lines|tojson }};
 const ST={{ stock_map|tojson }};
-const IT=[{% for i in items if i.active %}{id:{{ i.id }},code:{{ i.code|tojson }},name:{{ i.name|tojson }},p:{{ i.price|int }},c:{{ i.cost|round|int }},k:{{ i.pack or 1 }},u:{{ i.unit|tojson }},pu:{{ i.pack_unit|tojson }},v:{{ (i.vat_rate if i.vat_rate is not none else -1)|tojson }}},{% endfor %}];
+const IT=[{% for i in items if i.active %}{id:{{ i.id }},code:{{ i.code|tojson }},name:{{ i.name|tojson }},p:{{ i.price|int }},c:{{ i.cost|round|int }},k:{{ i.pack or 1 }},u:{{ i.unit|tojson }},pu:{{ i.pack_unit|tojson }},v:{{ (i.vat_rate if i.vat_rate is not none else -1)|tojson }},s:{{ (i.supplier_id or 0)|tojson }}},{% endfor %}];
 let PS=[{% for v in parties %}{id:{{ v.id }},code:{{ v.code|tojson }},name:{{ v.name|tojson }},vid:{{ (v.visitor_id or 0)|tojson }}},{% endfor %}];
 const byId=Object.fromEntries(IT.map(x=>[x.id,x]));
+const avail=()=>{if(MODE!=='purchase')return IT;const s=+(document.getElementById('pid')||{}).value||0;return s?IT.filter(x=>!x.s||x.s===s):IT};
 const f=n=>Number(n||0).toLocaleString('en-US');
 const esc=s=>String(s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
 const pkf=(q,x)=>{q=+q||0;if(!x||x.k<=1||!q)return f(q)+(x?' '+x.u:'');const c=Math.floor(Math.abs(q)/x.k),b=Math.abs(q)%x.k;return f(q)+' '+x.u+' ('+(q<0?'-':'')+f(c)+' '+x.pu+(b?' + '+f(b):'')+')'};
@@ -114,8 +115,8 @@ function setItem(tr,x){tr.querySelector('input[name=item_id]').value=x?x.id:'';t
   calc();if(x)tr.querySelector(x.k>1?'input[name=ctn]':'input[name=box]').focus()}
 function addRow(focus){const t=document.getElementById('rt').content.cloneNode(true);const tr=t.querySelector('tr');
   const code=tr.querySelector('.code'),name=tr.querySelector('.name');
-  code.addEventListener('input',()=>{tr.querySelector('input[name=item_id]').value='';showList(code,match(IT,code.value,'code'),x=>setItem(tr,x))});
-  name.addEventListener('input',()=>{tr.querySelector('input[name=item_id]').value='';showList(name,match(IT,name.value,'name'),x=>setItem(tr,x))});
+  code.addEventListener('input',()=>{tr.querySelector('input[name=item_id]').value='';showList(code,match(avail(),code.value,'code'),x=>setItem(tr,x))});
+  name.addEventListener('input',()=>{tr.querySelector('input[name=item_id]').value='';showList(name,match(avail(),name.value,'name'),x=>setItem(tr,x))});
   [code,name].forEach(inp=>{inp.addEventListener('keydown',e=>{if(keyNav(e))return;
       if(e.key==='Enter'){e.preventDefault();const ex=IT.find(x=>norm(x.code)===norm(code.value));if(ex)setItem(tr,ex)}});
     inp.addEventListener('blur',()=>setTimeout(()=>{if(cur&&cur.inp===inp)hideList();
@@ -147,7 +148,7 @@ function calc(){let q=0,G=0,Dd=0,V=0,A=0;rowsEl.querySelectorAll('tr').forEach(r
 let lastRow=null;
 WS.addEventListener('change',calc);const PK=document.getElementById('pkind');if(PK)PK.addEventListener('change',calc);
 const IM=document.getElementById('im'),IQ=document.getElementById('imq'),IR=document.getElementById('imr');let mAct=0,mList=[];
-function renderM(){const q=norm(IQ.value);mList=q?IT.filter(x=>norm(x.code).includes(q)||norm(x.name).includes(q)):IT.slice();mAct=0;
+function renderM(){const q=norm(IQ.value);const A_=avail();mList=q?A_.filter(x=>norm(x.code).includes(q)||norm(x.name).includes(q)):A_.slice();mAct=0;
   IR.innerHTML=mList.map((x,i)=>`<tr data-i="${i}" style="cursor:pointer"><td>${esc(x.code)}</td><td>${esc(x.name)}</td><td class="n">${f(stk(x))}</td><td class="n">${f(x.p)}</td><td class="n">${f(x.c)}</td></tr>`).join('')||'<tr><td colspan="5" class="muted">موردی نیست.</td></tr>';hl()}
 function hl(){[...IR.children].forEach((r,i)=>r.style.background=i===mAct?'var(--pri-s)':'')}
 function openItems(){IM.classList.add('on');IQ.value='';renderM();setTimeout(()=>IQ.focus(),30)}

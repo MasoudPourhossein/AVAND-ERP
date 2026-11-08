@@ -116,7 +116,7 @@ ACCESS = {
     "invoice_remove": (["users"], ["users"]), "payment_delete": (["void"], ["void"]),
     "users": (["users"], ["users"]), "user_edit": (["users"], ["users"]), "user_delete": (["users"], ["users"]),
     "backup": (["users"], []), "backups": (["users"], ["users"]), "backup_file": (["users"], []),
-    "backup_delete": (["users"], ["users"]), "backup_restore": (["users"], ["users"]), "settings": (["users"], ["users"]),
+    "backup_delete": (["users"], ["users"]), "supplier_recode": (["items"], ["items"]), "backup_restore": (["users"], ["users"]), "settings": (["users"], ["users"]),
     "tr_list": (["treasury", "rep_fin"], []), "tr_new": (["treasury"], ["treasury"]), "tr_view": (["treasury", "rep_fin", "payment"], []),
     "tr_delete": (["void"], ["void"]), "inv_receive": (["payment", "treasury"], ["payment", "treasury"]),
     "cheques": (["treasury", "rep_fin"], []), "cheque_view": (["treasury", "rep_fin"], ["treasury"]),
@@ -325,14 +325,14 @@ def stock_rows(date=None, wh_id=None):
     date = date or today_j()
     wf, wa = ("AND wh_id=?", [wh_id]) if wh_id else ("", [])
     return q(f"""
-      SELECT i.*, gr.name AS group_name,
+      SELECT i.*, gr.name AS group_name, sp.code AS sup_code, sp.name AS sup_name,
        COALESCE((SELECT SUM(qty) FROM stock_moves WHERE item_id=i.id {wf}),0) AS st,
        COALESCE((SELECT SUM(cl.qty) FROM cons_lines cl JOIN consignments c ON c.id=cl.cons_id
                  WHERE cl.item_id=i.id AND c.status='open' {wf.replace('wh_id', 'c.wh_id')}),0) AS open_amani,
        COALESCE((SELECT price FROM prices WHERE item_id=i.id AND date<=? AND price>0 ORDER BY date DESC,id DESC LIMIT 1),0) AS price,
        COALESCE({BUY_AT.format(i="i.id", d="?")},{AVG_COST}) AS cost,
        COALESCE({BUY_AT.format(i="i.id", d="?")},0) AS buy
-      FROM items i LEFT JOIN item_groups gr ON gr.id=i.group_id ORDER BY i.code""", wa + wa + [date, date, date])
+      FROM items i LEFT JOIN item_groups gr ON gr.id=i.group_id LEFT JOIN persons sp ON sp.id=i.supplier_id ORDER BY i.code""", wa + wa + [date, date, date])
 
 
 def stock_of(item_id, wh_id):
