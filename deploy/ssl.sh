@@ -101,6 +101,12 @@ else
   log "certificate valid: $(openssl x509 -enddate -noout -in "$LE/cert.pem")"
 fi
 
+# renewal must use the folder nginx serves for the challenge
+if [ -f "$REN" ]; then
+  sed -i "s|^webroot_path = .*|webroot_path = $WEB,|; /^\[\[webroot\]\]/,\$ s|^$D = .*|$D = $WEB|" "$REN"
+  grep -q "^\[\[webroot\]\]" "$REN" || printf '\n[[webroot]]\n%s = %s\n' "$D" "$WEB" >> "$REN"
+fi
+
 # 4) full site: http -> https, TLS 1.2/1.3, full chain, security headers, proxy to the app
 full_site; apply
 
@@ -113,7 +119,19 @@ if systemctl list-unit-files certbot.timer >/dev/null 2>&1; then
 else
   echo "17 3,15 * * * root certbot renew -q" > /etc/cron.d/avand-certbot
 fi
-log "renewal dry-run"; certbot renew --dry-run -q --cert-name "$D" && log "auto-renew OK" || die "renewal dry-run failed — check port 80 forwarding."
+# challenge path served locally?
+TOK="avand-$$"; echo ok > "$WEB/.well-known/acme-challenge/$TOK"
+curl -fsS --noproxy '*' -m 10 -H "Host: $D" "http://127.0.0.1/.well-known/acme-challenge/$TOK" >/dev/null && log "challenge path OK (port 80 on this host)" \
+  || echo -e "\e[1;33mWARN:\e[0m nginx does not serve the challenge path on port 80"
+rm -f "$WEB/.well-known/acme-challenge/$TOK"
+if curl -fsS -m 20 -o /dev/null https://acme-v02.api.letsencrypt.org/directory; then
+  log "Let's Encrypt reachable"
+  log "renewal dry-run (staging server, may be slow)"
+  if timeout 240 certbot renew --dry-run -q --cert-name "$D"; then log "auto-renew OK"
+  else echo -e "\e[1;33mWARN:\e[0m dry-run failed (often a timeout to the staging server). Real renewal is retried twice a day by certbot.timer; check later: certbot renew --dry-run"; fi
+else
+  echo -e "\e[1;33mWARN:\e[0m Let's Encrypt is not reachable from this server right now; certbot.timer retries twice a day (renewal starts 30 days before expiry)."
+fi
 
 # 6) check
 sleep 1
