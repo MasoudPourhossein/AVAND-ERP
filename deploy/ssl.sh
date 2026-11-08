@@ -63,7 +63,7 @@ full_site(){
       add_header X-Frame-Options SAMEORIGIN always;
       add_header Referrer-Policy strict-origin-when-cross-origin always;
 
-      client_max_body_size 25m;
+      client_max_body_size 512m;
       gzip on; gzip_types text/css application/javascript application/json image/svg+xml;
 
       location / {

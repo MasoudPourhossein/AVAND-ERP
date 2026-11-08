@@ -38,6 +38,7 @@ services:
       TZ: Asia/Tehran
     volumes:
       - ${AVAND_HOME:-/var/lib/avand}/app:/data
+      - ${AVAND_HOME:-/var/lib/avand}/backups:/auto-backups:ro
     ports:
       - "127.0.0.1:${APP_PORT:-8000}:8000"   # public access via nginx (HTTPS)
     read_only: true

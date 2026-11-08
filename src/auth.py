@@ -239,18 +239,3 @@ def api_search():
             for r in q("SELECT id, no, date FROM transfers WHERE no=?", (n,)):
                 out.append({"t": "حواله انبار", "l": f"{r['no']} - {r['date']}", "u": url_for("transfer_view", tid=r["id"])})
     return jsonify(out[:24])
-
-
-@app.route("/backup")
-def backup():
-    """pg_dump custom format (restore: pg_restore -c -d DB file)"""
-    os.makedirs(BACKUP_DIR, exist_ok=True)
-    dst = os.path.join(BACKUP_DIR, f"avand-{datetime.datetime.now():%Y%m%d-%H%M}.dump")
-    url = dbl.engine.url
-    env = dict(os.environ, PGPASSWORD=url.password or "")
-    r = subprocess.run(["pg_dump", "-Fc", "-h", url.host or "127.0.0.1", "-p", str(url.port or 5432), "-U", url.username,
-                        "-d", url.database, "-f", dst], env=env, capture_output=True, text=True)
-    if r.returncode != 0:
-        flash("پشتیبان‌گیری ناموفق بود: " + (r.stderr or "")[:200], "bad")
-        return redirect(url_for("dashboard"))
-    return send_file(dst, as_attachment=True)

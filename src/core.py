@@ -38,7 +38,7 @@ app = Flask(__name__)
 app.secret_key = _secret()
 app.config.update(SESSION_COOKIE_HTTPONLY=True, SESSION_COOKIE_SAMESITE="Lax",
                   SESSION_COOKIE_SECURE=os.environ.get("AVAND_HTTPS") == "1",
-                  PERMANENT_SESSION_LIFETIME=datetime.timedelta(hours=12), MAX_CONTENT_LENGTH=10 * 1024 * 1024)
+                  PERMANENT_SESSION_LIFETIME=datetime.timedelta(hours=12), MAX_CONTENT_LENGTH=512 * 1024 * 1024)
 app.wsgi_app = ProxyFix(app.wsgi_app, x_for=1, x_proto=1, x_host=1)
 app.teardown_appcontext(D.close)
 
@@ -115,7 +115,8 @@ ACCESS = {
     "print_invoice": (["payment", "settle", "sale", "rep_sales", "rep_fin"], []),
     "invoice_remove": (["users"], ["users"]), "payment_delete": (["void"], ["void"]),
     "users": (["users"], ["users"]), "user_edit": (["users"], ["users"]), "user_delete": (["users"], ["users"]),
-    "backup": (["users"], []), "settings": (["users"], ["users"]),
+    "backup": (["users"], []), "backups": (["users"], ["users"]), "backup_file": (["users"], []),
+    "backup_delete": (["users"], ["users"]), "backup_restore": (["users"], ["users"]), "settings": (["users"], ["users"]),
     "tr_list": (["treasury", "rep_fin"], []), "tr_new": (["treasury"], ["treasury"]), "tr_view": (["treasury", "rep_fin", "payment"], []),
     "tr_delete": (["void"], ["void"]), "inv_receive": (["payment", "treasury"], ["payment", "treasury"]),
     "cheques": (["treasury", "rep_fin"], []), "cheque_view": (["treasury", "rep_fin"], ["treasury"]),

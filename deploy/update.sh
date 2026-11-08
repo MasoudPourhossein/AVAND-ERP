@@ -5,6 +5,7 @@ cd /opt/avand
 echo "==> git pull"; git pull --ff-only
 install -m 755 deploy/update.sh /usr/local/bin/avand-update
 install -m 755 deploy/ssl.sh /usr/local/bin/avand-ssl
+install -m 755 deploy/restore.sh /usr/local/bin/avand-restore
 docker compose up -d --build
 for i in $(seq 1 40); do
   if curl -fs -o /dev/null "http://127.0.0.1:$(grep -oP '^APP_PORT=\K\d+' .env || echo 8000)/health"; then

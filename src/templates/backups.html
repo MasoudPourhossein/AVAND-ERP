@@ -1,0 +1,29 @@
+{% extends "base.html" %}{% from "_m.html" import icon %}{% block h %}پشتیبان‌گیری و بازیابی{% endblock %}
+{% block body %}
+<div class="bar mb"><form method="post"><button class="btn g">{{ icon('plus') }} ساخت پشتیبان روی سرور</button></form>
+  <a class="btn" href="/backup">{{ icon('download') }} ساخت و دانلود پشتیبان</a></div>
+<div class="card"><h3>{{ icon('download') }} فایل‌های پشتیبان</h3>
+<table><tr><th>فایل</th><th>نوع</th><th>زمان</th><th class="n">حجم (KB)</th><th></th></tr>
+{% for f in files %}<tr><td dir="ltr" style="text-align:right">{{ f.name }}</td>
+<td>{{ 'خودکار روزانه' if f.src=='auto' else ('قبل از بازیابی' if f.name.startswith('pre-restore') else ('آپلود شده' if f.name.startswith('uploaded') else 'دستی')) }}</td>
+<td dir="ltr" style="text-align:right">{{ f.mtime.strftime('%Y-%m-%d %H:%M') }}</td><td class="n">{{ (f.size/1024)|round|int }}</td>
+<td style="white-space:nowrap"><a class="btn sm s" href="/backups/{{ f.src }}/{{ f.name }}">دانلود</a>
+  <button type="button" class="btn sm o" onclick="pick('{{ f.src }}','{{ f.name }}')">بازیابی</button>
+  {% if f.src=='manual' %}<form method="post" action="/backups/{{ f.name }}/delete" style="display:inline" onsubmit="return confirm('فایل حذف شود؟')"><button class="btn sm r">حذف</button></form>{% endif %}</td></tr>
+{% else %}<tr><td colspan="5" class="muted">فایل پشتیبانی نیست.</td></tr>{% endfor %}</table>
+<p class="note">پشتیبان خودکار هر شب ساعت ۲:۳۰ گرفته و ۳۰ روز نگه داشته می‌شود.</p></div>
+<form method="post" action="/backups/restore" enctype="multipart/form-data" class="card" id="rf" style="border-color:#fecaca" onsubmit="return confirm('همه اطلاعات فعلی با پشتیبان جایگزین می‌شود. ادامه؟')">
+  <h3 style="color:var(--bad)">{{ icon('undo-2') }} بازیابی اطلاعات</h3>
+  <p class="muted">همه اطلاعات فعلی با محتوای پشتیبان جایگزین می‌شود. قبل از بازیابی، خودکار یک پشتیبان «قبل از بازیابی» ساخته می‌شود؛ اگر بازیابی خطا بدهد، اطلاعات قبلی برمی‌گردد. پشتیبان نسخه‌های قبلی برنامه هم بعد از بازیابی خودکار به‌روز می‌شود.</p>
+  <input type="hidden" name="src" id="rsrc"><input type="hidden" name="name" id="rname">
+  <div class="f mb">
+    <div style="grid-column:1/-1"><label>فایل انتخاب‌شده از فهرست</label><input id="rshow" disabled placeholder="از فهرست بالا «بازیابی» را بزنید، یا فایل آپلود کنید"></div>
+    <div style="grid-column:1/-1"><label>یا آپلود فایل پشتیبان (.dump)</label><input type="file" name="file" accept=".dump"></div>
+    <div><label>عبارت «بازیابی» را تایپ کنید</label><input name="confirm" autocomplete="off" required></div>
+    <div><label>رمز عبور شما</label><input name="password" type="password" required></div>
+  </div>
+  <label style="display:flex;gap:8px;align-items:center;color:var(--txt);font-size:14px;margin-bottom:14px"><input type="checkbox" name="ok" value="1" style="width:auto"> می‌دانم اطلاعات فعلی جایگزین می‌شود.</label>
+  <button class="btn r">{{ icon('undo-2') }} بازیابی</button>
+</form>
+{% endblock %}
+{% block js %}<script>function pick(s,n){rsrc.value=s;rname.value=n;rshow.value=n;document.getElementById('rf').scrollIntoView({behavior:'smooth'})}</script>{% endblock %}

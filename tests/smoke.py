@@ -10,7 +10,7 @@ with create_engine(url).begin() as c:
 import app as A  # noqa: E402
 
 T = lambda r: " ".join(re.sub(r"<[^>]+>", " ", r.data.decode()).split())
-eng = create_engine(url)
+eng = create_engine(url, pool_pre_ping=True)
 
 
 def one(sql, **kw):
@@ -246,7 +246,7 @@ tb = T(G("/reports/gl/trial?" + F3)); assert "اختلاف (باید صفر با
 assert "اختلاف 0" in T(G("/reports/gl/bs?to=1405/12/29"))
 assert one(f"SELECT COUNT(*) FROM tr_docs WHERE inv_id={inv_s}") >= 1
 # repost is idempotent
-snap = lambda: one("SELECT string_agg(account_id||':'||COALESCE(person_id,0)||':'||COALESCE(bank_id,0)||':'||COALESCE(box_id,0)||':'||s, ',' ORDER BY 1) FROM (SELECT account_id, person_id, bank_id, box_id, SUM(debit-credit) s FROM voucher_lines GROUP BY 1,2,3,4) z")
+snap = lambda: one("SELECT string_agg(account_id||':'||COALESCE(person_id,0)||':'||COALESCE(bank_id,0)||':'||COALESCE(box_id,0)||':'||s, ',' ORDER BY account_id, person_id, bank_id, box_id) FROM (SELECT account_id, person_id, bank_id, box_id, SUM(debit-credit) s FROM voucher_lines GROUP BY 1,2,3,4) z")
 s0 = snap(); P("/vouchers/repost", {}); assert snap() == s0; gl_ok()
 assert one(f"SELECT COUNT(*) FROM vouchers WHERE id={mv}") == 1
 print("V3 OK")
@@ -304,4 +304,24 @@ nc = one("SELECT code FROM items WHERE name='دستمال کاغذی'"); assert 
 assert one("SELECT g.code FROM items i JOIN item_groups g ON g.id=i.group_id WHERE i.name='دستمال کاغذی'").isdigit()
 assert one("SELECT SUM(qty) FROM stock_moves m JOIN items i ON i.id=m.item_id WHERE i.name='دستمال کاغذی'") == 24
 gl_ok()
+# backup / restore
+P("/backups", {}); G("/backups")
+bk = sorted(f for f in os.listdir(os.path.join(os.environ["AVAND_DATA"], "backups")) if f.startswith("avand-"))[-1]
+assert cl.get(f"/backups/manual/{bk}").status_code == 200 and cl.get("/backups/manual/..%2Fx.dump").status_code == 404
+n0 = one("SELECT COUNT(*) FROM persons")
+P("/persons", {"name": "بعد از پشتیبان", "is_customer": "1", "active": "1"}); assert one("SELECT COUNT(*) FROM persons") == n0 + 1
+assert "رمز عبور" in T(P("/backups/restore", {"src": "manual", "name": bk, "confirm": "بازیابی", "ok": "1", "password": "x"}))
+bad = io.BytesIO(b"not a dump")
+r = ok(cl.post("/backups/restore", data={"file": (bad, "x.dump"), "confirm": "بازیابی", "ok": "1", "password": "secret1"},
+               content_type="multipart/form-data", follow_redirects=True), "bad restore")
+assert "معتبر نیست" in T(r) and one("SELECT COUNT(*) FROM persons") == n0 + 1
+r = P("/backups/restore", {"src": "manual", "name": bk, "confirm": "بازیابی", "ok": "1", "password": "secret1"})
+assert "بازیابی شد" in T(r), T(r)[:400]
+assert one("SELECT COUNT(*) FROM persons") == n0 and cl.get("/persons").status_code == 302
+P("/login", {"username": "admin", "password": "secret1"}); G("/"); G("/reports/gl/trial"); gl_ok()
+b2 = io.BytesIO(open(os.path.join(os.environ["AVAND_DATA"], "backups", bk), "rb").read())
+r = ok(cl.post("/backups/restore", data={"file": (b2, "up.dump"), "confirm": "بازیابی", "ok": "1", "password": "secret1"},
+               content_type="multipart/form-data", follow_redirects=True), "upload restore")
+assert "بازیابی شد" in T(r)
+P("/login", {"username": "admin", "password": "secret1"}); assert one("SELECT COUNT(*) FROM persons") == n0
 print("SMOKE OK")

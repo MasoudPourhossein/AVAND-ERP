@@ -79,7 +79,7 @@
     <details class="ng"><summary>{{ icon('user-cog') }}<span>سیستم</span></summary>
       {{ nl('/users', 'user-cog', 'کاربران و دسترسی‌ها', can('users')) }}
       {{ nl('/settings', 'shield-check', 'تنظیمات شرکت، لوگو و مالیات', can('users')) }}
-      {% if can('users') %}<a href="/backup">{{ icon('download') }}<span>پشتیبان‌گیری</span></a>{% endif %}
+      {{ nl('/backups', 'download', 'پشتیبان‌گیری و بازیابی', can('users')) }}
       {{ nl('/password', 'key-round', 'تغییر رمز عبور') }}
       <a href="/logout">{{ icon('log-out') }}<span>خروج</span></a>
     </details>

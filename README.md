@@ -9,6 +9,7 @@ git clone https://x-access-token:$T@github.com/MasoudPourhossein/AVAND-ERP.git /
 ```
 - اطلاعات برنامه قبلی (`/var/lib/anbar/anbar.db`) یک بار به PostgreSQL منتقل و کانتینر قبلی خاموش می‌شود؛ یک کپی از فایل قبلی در `/var/lib/avand/app/` می‌ماند.
 - برنامه روی `127.0.0.1:8000` است؛ nginx روی میزبان آن را با `https://domain:70` سرو می‌کند.
+- پشتیبان و بازیابی: منوی سیستم ← «پشتیبان‌گیری و بازیابی» (پشتیبان دستی، پشتیبان خودکار شبانه، دانلود، آپلود و بازیابی با پشتیبان خودکار قبل از بازیابی). از خط فرمان: `avand-restore FILE.dump`.
 - SSL: `avand-ssl` (یا `bash /opt/avand/deploy/ssl.sh`) — گواهی Let's Encrypt، تمدید خودکار (certbot.timer + reload nginx)، TLS 1.2/1.3، HTTP/2، HSTS، انتقال http به https. پورت ۸۰ باید به این سرور فوروارد باشد.
 
 ## به‌روزرسانی
