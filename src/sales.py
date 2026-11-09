@@ -418,7 +418,10 @@ def invoice(iid):
     pays = q("""SELECT p.*, COALESCE(NULLIF(u.fullname,''),u.username) uname FROM payments p LEFT JOIN users u ON u.id=p.created_by
                 WHERE inv_id=? ORDER BY date, p.id""", (iid,))
     from core import default_box, default_bank
-    return render_template("invoice.html", c=s, lines=sale_lines(iid), pays=pays, boxes=q("SELECT * FROM cash_boxes WHERE active=1 ORDER BY is_default DESC, code"),
+    import gl
+    src = q(INV_SQL + " WHERE s.id=?", (s["ret_of"],), one=True) if s["ret_of"] else None
+    rets = q(INV_SQL + " WHERE s.ret_of=? ORDER BY s.date, s.no", (iid,)) if s["kind"] != "return" else []
+    return render_template("invoice.html", c=s, src=src, rets=rets, bal=gl.person_balance(s["customer_id"]) or 0, lines=sale_lines(iid), pays=pays, boxes=q("SELECT * FROM cash_boxes WHERE active=1 ORDER BY is_default DESC, code"),
                            banks=q("SELECT * FROM banks WHERE active=1 ORDER BY is_default DESC, code"))
 
 

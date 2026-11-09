@@ -1,23 +1,33 @@
 {% extends "base.html" %}{% from "_m.html" import icon %}{% block h %}{{ 'برگشت از فروش' if c.kind=='return' else 'فاکتور فروش' }} {{ c.no }} - {{ c.cname }}{% endblock %}
 {% block body %}
 {% set s=inv_status(c) %}{% set diff=c.rem %}
+{% if c.kind == 'return' %}
+<div class="grid g4 kpis mb">
+ <div class="kpi" style="--c:#d97706"><span>مبلغ برگشت از فروش</span><b>{{ c.total|m }}</b><small>تخفیف: {{ (c.ldisc + c.discount)|m }} • مالیات: {{ c.vat_total|m }}</small></div>
+ <div class="kpi" style="--c:#059669"><span>برگشت به انبار {{ c.whname }}</span><b>{{ c.sold_qty|m }}</b><small>واحد کالا به موجودی اضافه شد</small></div>
+ {% if src %}<div class="kpi" style="--c:#4f46e5"><span>مانده فاکتور مرجع {{ src.no }} بعد از برگشت</span><b>{{ src.rem|m }}</b><small>فاکتور {{ src.total|m }} − دریافتی {{ src.paid|m }} − برگشت‌ها {{ src.ret_amt|m }}</small></div>
+ {% else %}<div class="kpi" style="--c:#4f46e5"><span>بدون فاکتور مرجع</span><b>{{ c.total|m }}</b><small>به بستانکار حساب مشتری رفت</small></div>{% endif %}
+ <div class="kpi" style="--c:{{ '#dc2626' if bal > 0 else '#059669' }}"><span>مانده کل حساب مشتری</span><b>{{ bal|abs|m }}</b><small>{{ 'بدهکار' if bal > 0 else ('بستانکار — قابل استرداد' if bal < 0 else 'تسویه') }}</small></div>
+</div>
+{% else %}
 <div class="grid g4 kpis mb">
  <div class="kpi" style="--c:#4f46e5"><span>مبلغ قابل پرداخت</span><b>{{ c.total|m }}</b><small>تخفیف: {{ (c.ldisc + c.discount)|m }} • مالیات: {{ c.vat_total|m }}</small></div>
  <div class="kpi" style="--c:#0891b2"><span>پوز و بانک</span><b>{{ (c.pos + c.bank)|m }}</b></div>
  <div class="kpi" style="--c:#059669"><span>نقد و چک</span><b>{{ (c.cash + c.chq)|m }}</b>{% if c.chq %}<small>چک: {{ c.chq|m }}</small>{% endif %}</div>
- <div class="kpi" style="--c:{{ '#059669' if diff==0 else '#dc2626' }}"><span>مانده ({{ s[0] }})</span><b>{{ diff|m }}</b></div>
+ <div class="kpi" style="--c:{{ '#059669' if diff==0 else '#dc2626' }}"><span>مانده ({{ s[0] }})</span><b>{{ diff|m }}</b>{% if c.ret_amt %}<small>برگشت از فروش: {{ c.ret_amt|m }}</small>{% endif %}</div>
 </div>
+{% endif %}
 <div class="bar"><a class="btn" href="/print/invoice/{{ c.id }}">{{ icon('printer') }} چاپ فاکتور رسمی</a><a class="btn s" href="/print/invoice/{{ c.id }}?fmt=pdf">PDF</a>
 {% if can('void') and c.kind != 'consign' %}<a class="btn s" href="/sales/{{ c.id }}/edit">ویرایش</a>{% endif %}
 {% if can('sale') and c.kind != 'return' %}<a class="btn o" href="/sales/return/new?of={{ c.id }}">{{ icon('undo-2') }} برگشت از فروش</a>{% endif %}
 {% if c.kind == 'return' and can('treasury') %}<a class="btn o" href="/treasury/new/pay?person={{ c.customer_id }}">{{ icon('wallet') }} استرداد وجه به مشتری</a>{% endif %}
 {% if c.ret_of %}<a class="btn s" href="/invoices/{{ c.ret_of }}">فاکتور مرجع {{ c.ret_of_no }}</a>{% endif %}
-{% if c.ret_of %}<a class="btn s" href="/invoices/{{ c.ret_of }}">فاکتور مرجع {{ c.ret_of_no }}</a>{% endif %}
+{% for r in rets %}<a class="btn s" href="/invoices/{{ r.id }}">برگشت {{ r.no }} ({{ r.total|m }})</a>{% endfor %}
 {% if c.cons_id %}<a class="btn s" href="/amani/{{ c.cons_id }}">امانی {{ c.cons_no }}</a>{% if c.return_no %}<a class="btn s" href="/print/return/{{ c.cons_id }}">مرجوعی {{ c.return_no }}</a>{% endif %}{% endif %}
 <a class="btn s" href="/persons/{{ c.customer_id }}">مشتری: {{ c.cname }}</a>{% if c.visitor_id %}<a class="btn s" href="/persons/{{ c.visitor_id }}">ویزیتور: {{ c.vname }}</a>{% endif %}
 <span class="sp"></span>{% if can('users') %}<a class="btn r" href="/invoices/{{ c.id }}/remove">ابطال / حذف</a>{% endif %}</div>
 <div class="grid g2">
-{% if can("payment","treasury") and c.kind != 'return' %}<div class="card"><h3>{{ icon('credit-card') }} ثبت دریافتی (هر کارت‌کشیدن یک ردیف)</h3>
+{% if can("payment","treasury") and c.kind != 'return' and diff > 0 %}<div class="card"><h3>{{ icon('credit-card') }} ثبت دریافتی (هر کارت‌کشیدن یک ردیف)</h3>
 <form method="post" class="f" id="qr">
  <div><label>روش</label><select name="method" id="qm"><option value="pos">کارت‌خوان (پوز)</option><option value="cash">نقد</option><option value="bank">واریز / حواله بانکی</option><option value="cheque">چک</option></select></div>
  <div><label>مبلغ (ریال)</label><input name="amount" type="number" min="1" value="{{ diff if diff>0 else '' }}" required></div>
@@ -29,10 +39,10 @@
  <div><label>تاریخ</label><input name="date" value="{{ today }}"></div>
  <div><button class="btn g">ثبت دریافت</button></div></form>
 {% if can('treasury') %}<p class="note"><a href="/treasury/new/recv?person={{ c.customer_id }}&inv={{ c.id }}">سند دریافت چندردیفی (چند چک / ترکیبی)</a></p>{% endif %}</div>{% endif %}
-<div class="card"><h3>دریافتی‌ها</h3><table><tr><th>سند</th><th>تاریخ</th><th>نوع</th><th>پیگیری / چک</th><th>کاربر</th><th class="n">مبلغ</th></tr>
+{% if c.kind != 'return' %}<div class="card"><h3>دریافتی‌ها</h3><table><tr><th>سند</th><th>تاریخ</th><th>نوع</th><th>پیگیری / چک</th><th>کاربر</th><th class="n">مبلغ</th></tr>
 {% for p in pays %}<tr><td><a href="/treasury/{{ p.doc_id }}">{{ p.no }}</a></td><td>{{ p.date }}</td><td>{{ METHOD[p.method] }}</td><td>{{ p.ref or '' }}</td><td>{{ p.uname or '' }}</td><td class="n">{{ p.amount|m }}</td></tr>
 {% else %}<tr><td colspan="6" class="muted">دریافتی ثبت نشده است.</td></tr>{% endfor %}</table>
-<p class="note">برای حذف دریافتی، سند خزانه آن را باز و حذف کنید.</p></div>
+<p class="note">برای حذف دریافتی، سند خزانه آن را باز و حذف کنید.</p></div>{% endif %}
 </div>
 <div class="card"><h3>اقلام فاکتور — تاریخ {{ c.date }} — انبار {{ c.whname }}</h3>
 <table><tr><th>کد</th><th>کالا</th><th>تعداد</th><th class="n">نرخ</th><th class="n">مبلغ</th><th class="n">تخفیف</th><th class="n">مالیات</th><th class="n">جمع</th></tr>
@@ -40,6 +50,6 @@
 <td class="n">{{ l.disc|m }}</td><td class="n">{{ l.vat|m }}{% if l.vat_rate %} <small class="muted">({{ l.vat_rate|round(1) }}%)</small>{% endif %}</td><td class="n">{{ (l.qty*l.price - l.disc + l.vat)|m }}</td></tr>{% endfor %}
 <tfoot><tr><td colspan="2">جمع</td><td class="n">{{ c.sold_qty|m }}</td><td></td><td class="n">{{ c.gross|m }}</td><td class="n">{{ c.ldisc|m }}</td><td class="n">{{ c.vat_total|m }}</td><td class="n">{{ (c.gross-c.ldisc+c.vat_total)|m }}</td></tr>
 {% if c.discount %}<tr><td colspan="7">تخفیف نهایی</td><td class="n">{{ c.discount|m }}</td></tr>{% endif %}
-<tr><td colspan="7"><b>قابل پرداخت</b></td><td class="n"><b>{{ c.total|m }}</b></td></tr></tfoot></table></div>
+<tr><td colspan="7"><b>{{ 'مبلغ برگشت (بستانکار مشتری)' if c.kind=='return' else 'قابل پرداخت' }}</b></td><td class="n"><b>{{ c.total|m }}</b></td></tr></tfoot></table></div>
 {% endblock %}
 {% block js %}<script>const qm=document.getElementById('qm');if(qm){const f=()=>document.querySelectorAll('#qr [class^="q-"]').forEach(e=>e.style.display=e.className.split(' ').includes('q-'+qm.value)?'':'none');qm.onchange=f;f()}</script>{% endblock %}
