@@ -381,7 +381,7 @@ P(f"/invoices/{iid}/remove", {"step": "2", "action": "delete", "confirm": no_d, 
 assert one(f"SELECT SUM(qty) FROM stock_moves WHERE item_id={k1} AND wh_id={w2}") == 100
 gl_ok()
 assert one(f"SELECT COUNT(*) FROM vouchers WHERE src_type='FCT' AND src_id={iid}") == 0
-assert cl.get("/system/reset").status_code == 404
+pass  # reset page temporarily back
 # auto codes: manual form, groups, excel template without codes
 P("/items", {"code": "", "name": "کالای بی‌کد", "unit": "عدد", "pack": 1, "buy": 5, "price": 9, "date": "1405/09/01"})
 ac1 = one("SELECT code FROM items WHERE name='کالای بی‌کد'"); assert ac1.isdigit() and int(ac1) >= 1001
@@ -390,8 +390,8 @@ from openpyxl import load_workbook  # noqa: E402
 hd = [c.value for c in load_workbook(io.BytesIO(cl.get("/items/template.xlsx").data)).active[1]]
 assert "کد کالا" not in hd and "نام کالا" in hd
 wb = Workbook(); ws = wb.active; ws.append(hd)
-ws.append(["دستمال کاغذی", "", "سلولزی جدید", "بسته", "کارتن", 12, 480, 840, 1, 12, ""]); ws.append(["کالای بی‌کد", "", "", "", "", "", "", 11, "", "", ""])
-ws.append(["آبمیوه", "پخش جدید", "نوشیدنی", "بطری", "کارتن", 6, 30, 50, 0, 0, ""])
+ws.append(["دستمال کاغذی", "", "سلولزی جدید", "بسته", "کارتن", 12, "", 480, "", 840, 1, 12, ""]); ws.append(["کالای بی‌کد", "", "", "", "", "", "", "", 11, "", "", "", ""])
+ws.append(["آبمیوه", "پخش جدید", "نوشیدنی", "بطری", "کارتن", 6, 5, "", "", 50, 0, 0, ""])
 b = io.BytesIO(); wb.save(b); b.seek(0)
 r = ok(cl.post("/items/import", data={"file": (b, "t.xlsx"), "date": "1405/09/02", "wh_id": w1}, content_type="multipart/form-data", follow_redirects=True), "imp2")
 assert "کالای جدید: 2" in T(r) and "به‌روزرسانی: 1" in T(r), T(r)[:400]
@@ -403,16 +403,25 @@ assert one("SELECT g.code FROM items i JOIN item_groups g ON g.id=i.group_id WHE
 assert one("SELECT SUM(qty) FROM stock_moves m JOIN items i ON i.id=m.item_id WHERE i.name='دستمال کاغذی'") == 24
 assert one("SELECT price FROM prices p JOIN items i ON i.id=p.item_id WHERE i.name='دستمال کاغذی' ORDER BY p.id DESC LIMIT 1") == 70
 assert one("SELECT buy FROM prices p JOIN items i ON i.id=p.item_id WHERE i.name='دستمال کاغذی' ORDER BY p.id DESC LIMIT 1") == 40
-assert "تعداد باکس در کارتن" in hd and "نرخ خرید هر کارتن" in hd
+assert "تعداد باکس در کارتن" in hd and "نرخ خرید هر کارتن" in hd and "نرخ خرید هر باکس" in hd
+assert one("SELECT buy FROM prices p JOIN items i ON i.id=p.item_id WHERE i.name='آبمیوه' ORDER BY p.id DESC LIMIT 1") == 5
+assert one("SELECT price FROM prices p JOIN items i ON i.id=p.item_id WHERE i.name='آبمیوه' ORDER BY p.id DESC LIMIT 1") == 8
 # Excel stock update: export, fill real stock, import -> adjustment
 we = load_workbook(io.BytesIO(cl.get("/items/export.xlsx").data)); wse = we.active; eh = [c.value for c in wse[1]]
 ci, bi_, ni = eh.index("موجودی واقعی (کارتن)") + 1, eh.index("موجودی واقعی (باکس)") + 1, eh.index("کد کالا") + 1
 for rr_ in range(2, wse.max_row + 1):
     if wse.cell(rr_, ni).value == "K1":
         wse.cell(rr_, ci).value = 1; wse.cell(rr_, bi_).value = 7
+pci = eh.index("نرخ فروش هر کارتن") + 1
+for rr_ in range(2, wse.max_row + 1):
+    if wse.cell(rr_, ni).value == "K1":
+        wse.cell(rr_, pci).value = 10000   # 50 boxes per carton -> 200 per box
 b3 = io.BytesIO(); we.save(b3); b3.seek(0)
 r = ok(cl.post("/items/import", data={"file": (b3, "e.xlsx"), "date": "1405/09/08", "wh_id": w1}, content_type="multipart/form-data", follow_redirects=True), "imp3")
 assert "اصلاح موجودی" in T(r) and one(f"SELECT SUM(qty) FROM stock_moves WHERE item_id={k1} AND wh_id={w1}") == 57, T(r)[:400]
+assert one(f"SELECT price FROM prices WHERE item_id={k1} ORDER BY date DESC, id DESC LIMIT 1") == 200
+# temporary data reset page
+G("/system/reset"); assert "رمز عبور" in T(P("/system/reset", {"mode": "docs", "confirm": "حذف همه", "ok": "1", "password": "x"}))
 gl_ok()
 gl_ok()
 # backup / restore
@@ -435,4 +444,9 @@ r = ok(cl.post("/backups/restore", data={"file": (b2, "up.dump"), "confirm": "ب
                content_type="multipart/form-data", follow_redirects=True), "upload restore")
 assert "بازیابی شد" in T(r)
 P("/login", {"username": "admin", "password": "secret1"}); assert one("SELECT COUNT(*) FROM persons") == n0
+P("/system/reset", {"mode": "docs", "confirm": "حذف همه", "ok": "1", "password": "secret1"})
+assert one("SELECT COUNT(*) FROM sales_invoices") == 0 and one("SELECT COUNT(*) FROM vouchers") == 0 and one("SELECT COUNT(*) FROM items") > 0
+P("/system/reset", {"mode": "all", "confirm": "حذف همه", "ok": "1", "password": "secret1"})
+assert one("SELECT COUNT(*) FROM items") == 0 and one("SELECT COUNT(*) FROM persons") == 0 and one("SELECT COUNT(*) FROM users") >= 1
+G("/"); G("/items")
 print("SMOKE OK")

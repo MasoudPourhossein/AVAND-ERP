@@ -242,14 +242,31 @@ def groups():
 
 
 # ---------- excel
-XL_COLS = ["کد کالا", "نام کالا", "کد تامین‌کننده", "نام تامین‌کننده", "کد گروه", "نام گروه", "واحد فروش", "واحد بسته‌بندی", "تعداد در بسته",
-           "نرخ خرید", "نرخ فروش", "موجودی اولیه (واحد فروش)", "بارکد", "فعال (1/0)"]
-# carton-based columns (template); old box-based columns are still accepted
-XL_ALIAS = {"تعداد باکس در کارتن": "تعداد در بسته", "نرخ خرید هر باکس": "نرخ خرید", "نرخ فروش هر باکس": "نرخ فروش"}
-XL_CTN = ["نرخ خرید هر کارتن", "نرخ فروش هر کارتن", "موجودی اولیه (کارتن)", "موجودی اولیه (باکس)", "موجودی واقعی (کارتن)", "موجودی واقعی (باکس)"]
+# one set of columns for template, export and import. Prices: per box OR per carton (the other is computed).
+XL_COLS = ["کد کالا", "نام کالا", "کد تامین‌کننده", "نام تامین‌کننده", "کد گروه", "نام گروه", "واحد فروش", "واحد بسته‌بندی",
+           "تعداد باکس در کارتن", "نرخ خرید هر باکس", "نرخ خرید هر کارتن", "نرخ فروش هر باکس", "نرخ فروش هر کارتن",
+           "موجودی اولیه (کارتن)", "موجودی اولیه (باکس)", "بارکد", "فعال (1/0)"]
+XL_STOCK = ["موجودی واقعی (کارتن)", "موجودی واقعی (باکس)"]
+# column names of older files
+XL_ALIAS = {"تعداد در بسته": "تعداد باکس در کارتن", "نرخ خرید": "نرخ خرید هر باکس", "نرخ فروش": "نرخ فروش هر باکس",
+            "موجودی اولیه (واحد فروش)": "موجودی اولیه (باکس)"}
+XL_NUM = ["تعداد باکس در کارتن", "نرخ خرید هر باکس", "نرخ خرید هر کارتن", "نرخ فروش هر باکس", "نرخ فروش هر کارتن",
+          "موجودی اولیه (کارتن)", "موجودی اولیه (باکس)"] + XL_STOCK
 # template for new items: no codes, the system assigns item and group codes
-TPL_COLS = ["نام کالا", "نام تامین‌کننده", "نام گروه", "واحد فروش", "واحد بسته‌بندی", "تعداد باکس در کارتن", "نرخ خرید هر کارتن", "نرخ فروش هر کارتن",
-            "موجودی اولیه (کارتن)", "موجودی اولیه (باکس)", "بارکد"]
+TPL_COLS = ["نام کالا", "نام تامین‌کننده", "نام گروه", "واحد فروش", "واحد بسته‌بندی", "تعداد باکس در کارتن",
+            "نرخ خرید هر باکس", "نرخ خرید هر کارتن", "نرخ فروش هر باکس", "نرخ فروش هر کارتن", "موجودی اولیه (کارتن)", "موجودی اولیه (باکس)", "بارکد"]
+
+
+def pick_price(box, ctn, k, cur):
+    """box price from a box price and/or a carton price; if both are given and disagree, the one that was changed wins"""
+    k = max(k or 1, 1)
+    if ctn is not None and box is not None:
+        if k <= 1 or box == round(ctn / k):
+            return box
+        return box if box != cur else round(ctn / k)
+    if ctn is not None:
+        return round(ctn / k)
+    return box
 
 
 def _xl(rows, title, extra_cols=(), cols=None):
@@ -264,13 +281,13 @@ def _xl(rows, title, extra_cols=(), cols=None):
     for c in ws[1]:
         c.font = Font(bold=True, color="FFFFFF", name="Vazirmatn")
         c.fill = PatternFill("solid", fgColor="1E3A8A")
-        c.alignment = Alignment(horizontal="center", wrap_text=True)
+        c.alignment = Alignment(horizontal="center", vertical="center", wrap_text=True)
+    ws.row_dimensions[1].height = 36
     for r in rows:
         ws.append(r)
     widths = {"کد کالا": 14, "نام کالا": 34, "کد تامین‌کننده": 12, "نام تامین‌کننده": 22, "کد گروه": 10, "نام گروه": 18, "بارکد": 16, "فعال (1/0)": 8}
     for i, c in enumerate(cols, 1):
-        w = widths.get(c, 14)
-        ws.column_dimensions[ws.cell(1, i).column_letter].width = w
+        ws.column_dimensions[ws.cell(1, i).column_letter].width = widths.get(c, 14)
     ws.freeze_panes = "A2"
     buf = io.BytesIO()
     wb.save(buf)
@@ -280,7 +297,8 @@ def _xl(rows, title, extra_cols=(), cols=None):
 
 @app.route("/items/template.xlsx")
 def items_template():
-    buf = _xl([["نمونه: شامپو ۲۰۰ میل", "پخش نمونه", "بهداشتی", "باکس", "کارتن", 12, 7200000, 10200000, 40, 0, ""]], "کالاها", cols=TPL_COLS)
+    buf = _xl([["نمونه ۱: نرخ به کارتن", "پخش نمونه", "بهداشتی", "باکس", "کارتن", 10, "", 800000, "", 1000000, 5, 0, ""],
+               ["نمونه ۲: نرخ به باکس", "پخش نمونه", "بهداشتی", "باکس", "کارتن", 12, 60000, "", 85000, "", 3, 4, ""]], "کالاها", cols=TPL_COLS)
     return send_file(buf, as_attachment=True, download_name="items_template.xlsx",
                      mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
 
@@ -291,9 +309,10 @@ def items_export():
     gmap = {g_["id"]: g_ for g_ in _groups()}
     for r in stock_rows():
         g_ = gmap.get(r["group_id"])
-        rows.append([r["code"], r["name"], r["sup_code"] or "", r["sup_name"] or "", g_["code"] if g_ else "", g_["name"] if g_ else "", r["unit"], r["pack_unit"], r["pack"],
-                     int(r["buy"] or 0), int(r["price"] or 0), None, r["barcode"] or "", r["active"], int(r["st"])])
-    buf = _xl(rows, "کالاها", ["موجودی فعلی (فقط نمایش)", "موجودی واقعی (کارتن)", "موجودی واقعی (باکس)"])
+        k, b, p = r["pack"] or 1, int(r["buy"] or 0), int(r["price"] or 0)
+        rows.append([r["code"], r["name"], r["sup_code"] or "", r["sup_name"] or "", g_["code"] if g_ else "", g_["name"] if g_ else "", r["unit"], r["pack_unit"], k,
+                     b, b * k if k > 1 else None, p, p * k if k > 1 else None, None, None, r["barcode"] or "", r["active"], pkr(r["st"], r)])
+    buf = _xl(rows, "کالاها", ["موجودی فعلی (فقط نمایش)"] + XL_STOCK)
     return send_file(buf, as_attachment=True, download_name=f"items_{today_j().replace('/', '')}.xlsx",
                      mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
 
@@ -326,12 +345,9 @@ def items_import():
         if not rows:
             flash("فایل خالی است.", "bad")
             return redirect(url_for("items_import"))
-        head = [_cell(h) for h in rows[0]]
-        idx = {c: head.index(c) for c in XL_COLS + XL_CTN if c in head}
-        for a, c in XL_ALIAS.items():
-            if a in head and c not in idx:
-                idx[c] = head.index(a)
-        if "نام کالا" not in idx:
+        head = [XL_ALIAS.get(_cell(h), _cell(h)) for h in rows[0]]
+        idx = {c: head.index(c) for c in XL_COLS + XL_STOCK if c in head}
+        if "نام کالا" not in idx and "کد کالا" not in idx:
             flash("ستون «نام کالا» در ردیف اول لازم است. فایل نمونه را دانلود کنید.", "bad")
             return redirect(url_for("items_import"))
 
@@ -350,21 +366,23 @@ def items_import():
                 errors.append((n, f"کد {code} تکراری در فایل" if code else f"نام «{name}» تکراری در فایل")); continue
             seen.add(key)
             nums = {}
-            for c in ("تعداد در بسته", "نرخ خرید", "نرخ فروش", "موجودی اولیه (واحد فروش)") + tuple(XL_CTN):
-                raw = get(r, c)
+            for c in XL_NUM:
+                raw = get(r, c).replace(",", "").replace("٬", "")
                 v = to_int(raw, None) if raw else None
                 if raw and (v is None or v < 0):
                     errors.append((n, f"«{c}» عدد معتبر نیست: {raw}")); break
                 nums[c] = v
             else:
+                if nums["تعداد باکس در کارتن"] == 0:
+                    errors.append((n, "«تعداد باکس در کارتن» باید ۱ یا بیشتر باشد")); continue
                 if code:
                     ex = q("SELECT * FROM items WHERE code=?", (code,), one=True)
                 else:
                     ex = q("SELECT * FROM items WHERE name=? ORDER BY id LIMIT 1", (name,), one=True)
                 if not ex and not name:
                     errors.append((n, f"نام کالای جدید {code} خالی است")); continue
-                plan.append((code, name, ex, (get(r, "کد تامین‌کننده"), get(r, "نام تامین‌کننده")), get(r, "کد گروه"), get(r, "نام گروه"), get(r, "واحد فروش"), get(r, "واحد بسته‌بندی"),
-                             nums, get(r, "بارکد"), get(r, "فعال (1/0)")))
+                plan.append((code, name, ex, (get(r, "کد تامین‌کننده"), get(r, "نام تامین‌کننده")), get(r, "کد گروه"), get(r, "نام گروه"),
+                             get(r, "واحد فروش"), get(r, "واحد بسته‌بندی"), nums, get(r, "بارکد"), get(r, "فعال (1/0)")))
         if errors:
             result = {"errors": errors}
         else:
@@ -373,36 +391,32 @@ def items_import():
             for code, name, ex, sup, gcode, gname, unit, punit, nums, barcode, active in plan:
                 gid = group_by_name(gname, gcode) if (gcode or gname) else None
                 sid = supplier_by(*sup) if (sup[0] or sup[1]) else None
-                pack = nums["تعداد در بسته"]
+                pack = nums["تعداد باکس در کارتن"]
                 k = pack or (ex["pack"] if ex else 1) or 1
-                for col, ccol in (("نرخ خرید", "نرخ خرید هر کارتن"), ("نرخ فروش", "نرخ فروش هر کارتن")):
-                    if nums[col] is None and nums[ccol] is not None:      # carton price -> box price
-                        nums[col] = round(nums[ccol] / k)
-                if nums["موجودی اولیه (کارتن)"] or nums["موجودی اولیه (باکس)"]:
-                    nums["موجودی اولیه (واحد فروش)"] = (nums["موجودی اولیه (واحد فروش)"] or 0) + (nums["موجودی اولیه (کارتن)"] or 0) * k + (nums["موجودی اولیه (باکس)"] or 0)
                 if ex:
                     x("""UPDATE items SET name=COALESCE(NULLIF(?,''),name), group_id=COALESCE(?,group_id), unit=COALESCE(NULLIF(?,''),unit),
                          pack_unit=COALESCE(NULLIF(?,''),pack_unit), pack=COALESCE(?,pack), barcode=COALESCE(NULLIF(?,''),barcode),
                          active=COALESCE(?,active), supplier_id=COALESCE(?,supplier_id) WHERE id=?""",
-                      (name, gid, unit, punit, pack if pack else None, barcode, int(active) if active in ("0", "1") else None, sid, ex["id"]))
+                      (name, gid, unit, punit, pack, barcode, int(active) if active in ("0", "1") else None, sid, ex["id"]))
                     iid = ex["id"]; updated += 1
                 else:
                     iid = x("INSERT INTO items(code,name,group_id,unit,pack,pack_unit,barcode,active,supplier_id) VALUES(?,?,?,?,?,?,?,?,?)",
-                            (code or item_code(sid), name, gid, unit or "باکس", pack or 1, punit or "کارتن", barcode or None,
+                            (code or item_code(sid), name, gid, unit or "باکس", k, punit or "کارتن", barcode or None,
                              int(active) if active in ("0", "1") else 1, sid))
                     created += 1
-                b, p = nums["نرخ خرید"], nums["نرخ فروش"]
+                cb, cp = int(buy_at(iid, date) or 0), price_at(iid, date)
+                b = pick_price(nums["نرخ خرید هر باکس"], nums["نرخ خرید هر کارتن"], k, cb)
+                p = pick_price(nums["نرخ فروش هر باکس"], nums["نرخ فروش هر کارتن"], k, cp)
                 if b is not None or p is not None:
-                    cb, cp = int(buy_at(iid, date) or 0), price_at(iid, date)
                     nb, np_ = (b if b is not None else cb), (p if p is not None else cp)
                     if (nb, np_) != (cb, cp):
                         x("INSERT INTO prices(item_id,date,price,buy) VALUES(?,?,?,?)", (iid, date, np_, nb))
                         priced += 1
+                oq = (nums["موجودی اولیه (کارتن)"] or 0) * k + (nums["موجودی اولیه (باکس)"] or 0)
+                if oq:
+                    opening.append((iid, oq, b if b is not None else cb))
                 if nums["موجودی واقعی (کارتن)"] is not None or nums["موجودی واقعی (باکس)"] is not None:
                     counted[iid] = (nums["موجودی واقعی (کارتن)"] or 0) * k + (nums["موجودی واقعی (باکس)"] or 0)
-                oq = nums["موجودی اولیه (واحد فروش)"]
-                if oq:
-                    opening.append((iid, oq, b if b is not None else int(buy_at(iid, date) or 0)))
             rno = None
             if opening:
                 from inventory import make_receipt

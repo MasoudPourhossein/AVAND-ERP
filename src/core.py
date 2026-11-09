@@ -116,7 +116,7 @@ ACCESS = {
     "invoice_remove": (["users"], ["users"]), "payment_delete": (["void"], ["void"]),
     "users": (["users"], ["users"]), "user_edit": (["users"], ["users"]), "user_delete": (["users"], ["users"]),
     "backup": (["users"], []), "backups": (["users"], ["users"]), "backup_file": (["users"], []),
-    "backup_delete": (["users"], ["users"]), "stock_count_page": (["receipt", "rep_stock"], ["receipt"]), "supplier_recode": (["items"], ["items"]), "backup_restore": (["users"], ["users"]), "settings": (["users"], ["users"]),
+    "backup_delete": (["users"], ["users"]), "data_reset": (["users"], ["users"]), "stock_count_page": (["receipt", "rep_stock"], ["receipt"]), "supplier_recode": (["items"], ["items"]), "backup_restore": (["users"], ["users"]), "settings": (["users"], ["users"]),
     "tr_list": (["treasury", "rep_fin"], []), "tr_new": (["treasury"], ["treasury"]), "tr_view": (["treasury", "rep_fin", "payment"], []),
     "tr_delete": (["void"], ["void"]), "inv_receive": (["payment", "treasury"], ["payment", "treasury"]),
     "cheques": (["treasury", "rep_fin"], []), "cheque_view": (["treasury", "rep_fin"], ["treasury"]),
