@@ -1,0 +1,22 @@
+{% extends "base.html" %}{% from "_m.html" import icon %}{% block h %}فاکتور خرید از اکسل{% endblock %}
+{% block body %}
+<div class="card"><h3>{{ icon('users') }} ۱. تامین‌کننده</h3>
+<form method="get" class="f"><div style="grid-column:span 2"><label>تامین‌کننده</label><select name="supplier" onchange="this.form.submit()" required><option value="">انتخاب تامین‌کننده...</option>
+{% for s in sups %}<option value="{{ s.id }}" {{ 'selected' if s.id==sid }}>{{ s.code }} - {{ s.name }} ({{ s.n }} کالا)</option>{% endfor %}</select></div></form></div>
+{% if sid %}
+<div class="card"><h3>{{ icon('file-spreadsheet') }} ۲. دریافت قالب آماده</h3>
+<p>فایل اکسل با {{ items|length }} کالای این تامین‌کننده و <b>نرخ خرید فعلی</b> (هر باکس و هر کارتن) ساخته می‌شود. در هر ردیف تعداد را <b>به کارتن یا باکس</b> (یا هر دو) بنویسید؛ نرخ را اگر عوض شده یکی از دو ستون باکس/کارتن را تغییر دهید، دیگری را سیستم حساب می‌کند. ردیف‌های بدون تعداد نادیده گرفته می‌شوند.</p>
+<a class="btn g" href="/purchases/template.xlsx?supplier={{ sid }}">{{ icon('download') }} دانلود قالب خرید این تامین‌کننده</a>
+<div class="tw scroll" style="margin-top:12px"><table><thead><tr><th>کد</th><th>کالا</th><th>بسته‌بندی</th><th class="n">نرخ خرید هر باکس</th><th class="n">نرخ خرید هر کارتن</th><th>موجودی</th></tr></thead>
+{% for r in items %}<tr><td>{{ r.code }}</td><td>{{ r.name }}</td><td>{% if r.pack > 1 %}هر {{ r.pack_unit }} {{ r.pack }} {{ r.unit }}{% else %}{{ r.unit }}{% endif %}</td>
+<td class="n">{{ r.cost|m }}</td><td class="n">{{ (r.cost * r.pack)|m if r.pack > 1 else '—' }}</td><td>{{ pkr(r.st, r) }}</td></tr>
+{% else %}<tr><td colspan="6" class="muted">کالایی به این تامین‌کننده وصل نیست؛ در صفحه کالا «تامین‌کننده» را تعیین کنید.</td></tr>{% endfor %}</table></div></div>
+<form method="post" action="/purchases/new" enctype="multipart/form-data" class="card"><h3>{{ icon('inbox') }} ۳. بارگذاری فایل پرشده</h3>
+<input type="hidden" name="party_id" value="{{ sid }}">
+<div class="f"><div><label>تاریخ فاکتور</label><input name="date" value="{{ today }}" required></div>
+<div><label>انبار</label><select name="wh_id">{% for w in whs %}<option value="{{ w.id }}" {{ 'selected' if w.id==wh }}>{{ w.name }}</option>{% endfor %}</select></div>
+<div style="grid-column:span 2"><label>فایل اکسل</label><input type="file" name="xfile" accept=".xlsx" required></div>
+<div><button class="btn g">بارگذاری و نمایش فاکتور</button></div></div>
+<p class="note">فاکتور خرید در فرم کامل پر می‌شود تا اپراتور بازبینی و در صورت نیاز تعداد/نرخ/تخفیف را تغییر دهد؛ بعد «ثبت فاکتور خرید» را بزند.</p></form>
+{% endif %}
+{% endblock %}

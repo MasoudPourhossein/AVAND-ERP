@@ -113,7 +113,7 @@ ACCESS = {
     "cost_centers": (["setup", "rep_fin"], ["setup"]),
     "receipts": (["receipt", "rep_stock"], []), "receipt_view": (["receipt", "rep_stock"], []),
     "receipt_new": (["receipt"], ["receipt"]), "receipt_delete": (["void"], ["void"]),
-    "purchases": (["purchase", "rep_stock", "rep_fin"], []), "purchase_new": (["purchase"], ["purchase"]),
+    "purchases": (["purchase", "rep_stock", "rep_fin"], []), "purchase_new": (["purchase"], ["purchase"]), "purchase_excel": (["purchase"], []),
     "purchase_view": (["purchase", "rep_stock", "rep_fin"], []), "purchase_delete": (["void"], ["void"]),
     "transfers": (["transfer", "rep_stock"], []), "transfer_new": (["transfer"], ["transfer"]),
     "transfer_view": (["transfer", "rep_stock"], []), "transfer_delete": (["void"], ["void"]),

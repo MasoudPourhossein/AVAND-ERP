@@ -23,6 +23,7 @@
     {% if can('purchase','rep_stock','rep_fin') %}
     <details class="ng"><summary>{{ icon('inbox') }}<span>خرید</span></summary>
       {{ nl('/purchases/new', 'inbox', 'فاکتور خرید / برگشت از خرید', can('purchase')) }}
+      {{ nl('/purchases/excel', 'file-spreadsheet', 'فاکتور خرید از اکسل', can('purchase')) }}
       {{ nl('/purchases', 'list', 'فاکتورهای خرید', can('purchase','rep_stock','rep_fin')) }}
       {{ nl('/persons?kind=supplier', 'users', 'تامین‌کنندگان', can('persons','rep_fin')) }}
     </details>{% endif %}

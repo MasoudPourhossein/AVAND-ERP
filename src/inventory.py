@@ -375,7 +375,18 @@ def purchase_new():
     return render_template("doc_form.html", **form_ctx("purchase", parties=_suppliers()))
 
 
-PX_COLS = ["کد کالا", "نام کالا", "باکس در کارتن", "تعداد کارتن", "تعداد باکس", "نرخ خرید هر باکس", "نرخ خرید هر کارتن", "تخفیف ردیف (ریال)", "مالیات %"]
+PX_COLS = ["کد کالا", "نام کالا", "باکس در کارتن", "تعداد کارتن", "تعداد باکس", "نرخ خرید هر باکس", "نرخ خرید هر کارتن", "تخفیف ردیف (ریال)", "مالیات %",
+           "موجودی فعلی (فقط نمایش)"]
+
+
+@app.route("/purchases/excel")
+def purchase_excel():
+    from core import default_wh
+    sid = to_int(request.args.get("supplier"))
+    sups = q("""SELECT p.id, p.code, p.name, (SELECT COUNT(*) FROM items WHERE supplier_id=p.id AND active=1) n
+                FROM persons p WHERE p.is_supplier=1 AND p.active=1 ORDER BY p.code""")
+    items = [r for r in stock_rows() if r["active"] and r["supplier_id"] == sid] if sid else []
+    return render_template("purchase_excel.html", sups=sups, sid=sid, items=items, whs=warehouses_list(), wh=default_wh())
 
 
 @app.route("/purchases/template.xlsx")
@@ -387,7 +398,7 @@ def purchase_template():
     rows = [r for r in stock_rows() if r["active"] and (not sid or r["supplier_id"] == sid)]
     vd = vat_default()
     data = [[r["code"], r["name"], r["pack"] or 1, None, None, int(r["cost"] or 0), int(r["cost"] or 0) * (r["pack"] or 1) if (r["pack"] or 1) > 1 else None, None,
-             r["vat_rate"] if r["vat_rate"] is not None else vd] for r in rows]
+             r["vat_rate"] if r["vat_rate"] is not None else vd, pkr(r["st"], r)] for r in rows]
     name = v1("SELECT name FROM persons WHERE id=?", (sid,)) if sid else "همه"
     buf = _xl(data, "خرید", cols=PX_COLS)
     return send_file(buf, as_attachment=True, download_name=f"purchase_{(name or '').replace(' ', '_')}.xlsx",

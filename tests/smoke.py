@@ -359,8 +359,9 @@ gl_ok()
 tp = load_workbook(io.BytesIO(cl.get(f"/purchases/template.xlsx?supplier={sup}").data)).active
 th = [c.value for c in tp[1]]; codes = [tp.cell(r_, 1).value for r_ in range(2, tp.max_row + 1)]
 assert th[0] == "کد کالا" and "K1" in codes and all(one(f"SELECT supplier_id FROM items WHERE code='{c_}'") == sup for c_ in codes)
+G("/purchases/excel"); assert "دانلود قالب" in T(G(f"/purchases/excel?supplier={sup}"))
 xb = Workbook(); xs = xb.active; xs.append(th)
-xs.append(["K1", "", 50, 2, 0, "", 6000, 0, 0]); xs.append(["K2", "", 1, 0, 0, "", "", 0, 0])
+xs.append(["K1", "", 50, 2, 0, "", 6000, 0, 0, ""]); xs.append(["K2", "", 1, 0, 0, "", "", 0, 0, ""])
 bx = io.BytesIO(); xb.save(bx); bx.seek(0)
 r = T(ok(cl.post("/purchases/new", data={"xfile": (bx, "p.xlsx"), "party_id": sup, "wh_id": w1, "date": "1405/09/09"}, content_type="multipart/form-data"), "pxl"))
 assert "1 ردیف از اکسل" in r and '"ctn": 2' in r and '"price": 120' in r, r[:500]
