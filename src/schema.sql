@@ -207,3 +207,7 @@ ALTER TABLE persons ADD COLUMN IF NOT EXISTS credit_days INT NOT NULL DEFAULT 0;
 -- v4: every item belongs to a supplier, its code starts with the supplier's code
 ALTER TABLE items ADD COLUMN IF NOT EXISTS supplier_id INT REFERENCES persons(id);
 CREATE INDEX IF NOT EXISTS ix_items_supplier ON items(supplier_id);
+
+-- v4: who is credited for a stock receipt: NULL = capital (opening) or stock difference, 'items' = each item's supplier, 'person' = person_id
+ALTER TABLE receipts ADD COLUMN IF NOT EXISTS credit TEXT;
+ALTER TABLE receipts ADD COLUMN IF NOT EXISTS person_id INT REFERENCES persons(id);

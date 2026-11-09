@@ -58,6 +58,7 @@ def form_ctx(mode, parties=(), visitors=(), doc=None, init_lines=(), own_moves=N
         init_lines = posted_lines()
     return dict(mode=mode, items=stock_rows(), whs=warehouses_list(), wh=default_wh(), stock_map=sm,
                 parties=parties, visitors=visitors, doc=doc, init_lines=list(init_lines),
+                sups=q("SELECT id, code, name FROM persons WHERE is_supplier=1 ORDER BY code") if mode == "receipt" else [],
                 vat_on=setting("vat_on", "0") == "1", vat_def=vat_default())
 
 
@@ -101,10 +102,14 @@ def item_lines(table, fk, did):
 
 
 # ================= receipts =================
-def make_receipt(date, wh, kind, note, lines):
-    """lines: (item_id, qty, unit_cost) -> (no, id)"""
+def make_receipt(date, wh, kind, note, lines, credit=None, person_id=None):
+    """lines: (item_id, qty, unit_cost) -> (no, id). credit: None | 'items' (each item's supplier) | 'person' (person_id)"""
+    credit = credit if credit in ("items", "person") else None
+    if credit == "person" and not person_id:
+        credit = None
     no = next_no("RES")
-    rid = x("INSERT INTO receipts(no,date,wh_id,kind,note,created_by) VALUES(?,?,?,?,?,?)", (no, date, wh, kind, note, uid()))
+    rid = x("INSERT INTO receipts(no,date,wh_id,kind,note,created_by,credit,person_id) VALUES(?,?,?,?,?,?,?,?)",
+            (no, date, wh, kind, note, uid(), credit, person_id if credit == "person" else None))
     for i, qt, c in lines:
         x("INSERT INTO receipt_lines(receipt_id,item_id,qty,unit_cost) VALUES(?,?,?,?)", (rid, i, qt, c or 0))
     add_moves("RES", rid, no, date, [(i, wh, qt, c) for i, qt, c in lines])
@@ -131,7 +136,8 @@ def receipt_new():
                 raise ValueError("تاریخ نامعتبر است.")
             if not wh_valid(wh):
                 raise ValueError("انبار نامعتبر است.")
-            no, rid = make_receipt(date, wh, "in", request.form.get("note"), parse_lines(True))
+            no, rid = make_receipt(date, wh, "in", request.form.get("note"), parse_lines(True), credit=request.form.get("credit") or None,
+                                   person_id=to_int(request.form.get("credit_person")) or None)
             db().commit()
             flash(f"رسید انبار شماره {no} ثبت شد.", "ok")
             return redirect(url_for("receipt_view", rid=rid))
@@ -199,13 +205,37 @@ def stock_count_page():
 def receipt_view(rid):
     r = q("SELECT r.*, w.name whname FROM receipts r JOIN warehouses w ON w.id=r.wh_id WHERE r.id=?", (rid,), one=True) or abort(404)
     lines = item_lines("receipt_lines", "receipt_id", rid)
+    credit = None
+    if r["kind"] != "adjust":
+        credit = {"mode": r["credit"] or "", "person_id": r["person_id"],
+                  "pname": v1("SELECT name FROM persons WHERE id=?", (r["person_id"],)) if r["person_id"] else None,
+                  "sups": q("SELECT id, code, name FROM persons WHERE is_supplier=1 ORDER BY code"),
+                  "url": url_for("receipt_credit", rid=rid), "opening": r["kind"] == "opening"}
     doc = {"title": "اصلاح موجودی (انبارگردانی)" if r["kind"] == "adjust" else DOC["RES"] + (" (موجودی اولیه)" if r["kind"] == "opening" else ""), "no": r["no"], "date": r["date"], "note": r["note"],
            "extra": f"انبار: {r['whname']}",
            "cols": ["کد کالا", "نام کالا", "تعداد", "نرخ خرید واحد", "مبلغ"],
            "rows": [[l["code"], l["name"], pkr(l["qty"], l), money(l["unit_cost"]), money(l["qty"] * l["unit_cost"])] for l in lines],
            "foot": [("جمع مبلغ (ریال)", money(sum(l["qty"] * l["unit_cost"] for l in lines)))],
            "sign": ["تحویل‌دهنده", "انباردار"], "user": uname(r["created_by"])}
-    return doc_out(doc, back=url_for("receipts"), del_url=url_for("receipt_delete", rid=rid), pdf_url=url_for("receipt_view", rid=rid, fmt="pdf"))
+    return doc_out(doc, back=url_for("receipts"), del_url=url_for("receipt_delete", rid=rid), pdf_url=url_for("receipt_view", rid=rid, fmt="pdf"),
+                   credit=credit)
+
+
+@app.post("/receipts/<int:rid>/credit")
+def receipt_credit(rid):
+    """set who the received stock is owed to (capital / each item's supplier / one person) and repost"""
+    r = q("SELECT * FROM receipts WHERE id=?", (rid,), one=True) or abort(404)
+    mode = request.form.get("mode") if request.form.get("mode") in ("items", "person") else None
+    pid = to_int(request.form.get("person_id")) or None
+    if mode == "person" and not pid:
+        flash("تامین‌کننده را انتخاب کنید.", "bad")
+        return redirect(url_for("receipt_view", rid=rid))
+    x("UPDATE receipts SET credit=?, person_id=? WHERE id=?", (mode, pid if mode == "person" else None, rid))
+    import gl
+    gl.post_receipt(rid)
+    db().commit()
+    flash("حساب طرف رسید اصلاح شد" + (" — تامین‌کننده(ها) بستانکار شدند." if mode else "."), "ok")
+    return redirect(url_for("receipt_view", rid=rid))
 
 
 def _can_remove_moves(doc_type, did):

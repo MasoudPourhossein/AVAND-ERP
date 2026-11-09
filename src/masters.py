@@ -110,7 +110,8 @@ def items():
             msg = f"کالا «{name}» با کد {code} ثبت شد."
             if init_qty > 0:
                 from inventory import make_receipt
-                no, _ = make_receipt(date, wh, "opening", "موجودی اولیه", [(iid, init_qty, buy)])
+                no, _ = make_receipt(date, wh, "opening", "موجودی اولیه", [(iid, init_qty, buy)],
+                                     credit="items" if request.form.get("opening_credit") == "items" and sid else None)
                 msg += f" رسید موجودی اولیه شماره {no} صادر شد: {pk(init_qty, pack, unit, pack_unit)}."
             db().commit()
             flash(msg, "ok")
@@ -420,7 +421,8 @@ def items_import():
             rno = None
             if opening:
                 from inventory import make_receipt
-                rno, _ = make_receipt(date, wh, "opening", "ورود گروهی از اکسل", opening)
+                rno, _ = make_receipt(date, wh, "opening", "ورود گروهی از اکسل", opening,
+                                      credit="items" if request.form.get("opening_credit", "items") == "items" else None)
             ano = adj = None
             if counted:
                 from inventory import stock_count

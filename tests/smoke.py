@@ -333,6 +333,18 @@ assert stk(k2, w2) == -47
 with eng.begin() as c_:
     c_.execute(text(f"DELETE FROM stock_moves WHERE doc_type='RES' AND doc_id=0"))
 gl_ok()
+# opening stock owed to suppliers: switch a receipt's credit side
+orc = one(f"SELECT MIN(r.id) FROM receipts r JOIN receipt_lines l ON l.receipt_id=r.id WHERE r.kind='opening' AND l.item_id={k1}")
+val = one(f"SELECT SUM(qty*unit_cost) FROM receipt_lines WHERE receipt_id={orc}")
+pay0, cap0 = accbal("payable", person_id=sup), accbal("capital")
+assert "حساب طرف این رسید" in T(G(f"/receipts/{orc}"))
+P(f"/receipts/{orc}/credit", {"mode": "items"})
+assert accbal("payable", person_id=sup) == pay0 - val and accbal("capital") == cap0 + val
+P(f"/receipts/{orc}/credit", {"mode": "person", "person_id": sup2}); assert accbal("payable", person_id=sup) == pay0 and accbal("payable", person_id=sup2) < 0
+P(f"/receipts/{orc}/credit", {"mode": ""}); assert accbal("capital") == cap0
+P("/receipts/new", {"date": "1405/09/02", "wh_id": w1, "credit": "person", "credit_person": sup2, "item_id": [k2], "ctn": [0], "box": [4], "price": [20]})
+assert one("SELECT credit FROM receipts ORDER BY id DESC LIMIT 1") == "person"
+P("/vouchers/repost", {}); gl_ok()
 # stock count (انبارگردانی): set the real quantity, difference is booked
 G(f"/stock-count?wh={w1}")
 cur = stk(k1, w1); inv0 = accbal("inventory")
@@ -381,7 +393,7 @@ P(f"/invoices/{iid}/remove", {"step": "2", "action": "delete", "confirm": no_d, 
 assert one(f"SELECT SUM(qty) FROM stock_moves WHERE item_id={k1} AND wh_id={w2}") == 100
 gl_ok()
 assert one(f"SELECT COUNT(*) FROM vouchers WHERE src_type='FCT' AND src_id={iid}") == 0
-pass  # reset page temporarily back
+assert cl.get("/system/reset").status_code == 404
 # auto codes: manual form, groups, excel template without codes
 P("/items", {"code": "", "name": "کالای بی‌کد", "unit": "عدد", "pack": 1, "buy": 5, "price": 9, "date": "1405/09/01"})
 ac1 = one("SELECT code FROM items WHERE name='کالای بی‌کد'"); assert ac1.isdigit() and int(ac1) >= 1001
@@ -421,7 +433,7 @@ r = ok(cl.post("/items/import", data={"file": (b3, "e.xlsx"), "date": "1405/09/0
 assert "اصلاح موجودی" in T(r) and one(f"SELECT SUM(qty) FROM stock_moves WHERE item_id={k1} AND wh_id={w1}") == 57, T(r)[:400]
 assert one(f"SELECT price FROM prices WHERE item_id={k1} ORDER BY date DESC, id DESC LIMIT 1") == 200
 # temporary data reset page
-G("/system/reset"); assert "رمز عبور" in T(P("/system/reset", {"mode": "docs", "confirm": "حذف همه", "ok": "1", "password": "x"}))
+assert cl.get("/system/reset").status_code == 404
 gl_ok()
 gl_ok()
 # backup / restore
@@ -444,9 +456,4 @@ r = ok(cl.post("/backups/restore", data={"file": (b2, "up.dump"), "confirm": "ب
                content_type="multipart/form-data", follow_redirects=True), "upload restore")
 assert "بازیابی شد" in T(r)
 P("/login", {"username": "admin", "password": "secret1"}); assert one("SELECT COUNT(*) FROM persons") == n0
-P("/system/reset", {"mode": "docs", "confirm": "حذف همه", "ok": "1", "password": "secret1"})
-assert one("SELECT COUNT(*) FROM sales_invoices") == 0 and one("SELECT COUNT(*) FROM vouchers") == 0 and one("SELECT COUNT(*) FROM items") > 0
-P("/system/reset", {"mode": "all", "confirm": "حذف همه", "ok": "1", "password": "secret1"})
-assert one("SELECT COUNT(*) FROM items") == 0 and one("SELECT COUNT(*) FROM persons") == 0 and one("SELECT COUNT(*) FROM users") >= 1
-G("/"); G("/items")
 print("SMOKE OK")

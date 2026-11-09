@@ -25,6 +25,10 @@
       {% if mode in ('sale','sale_return') %}<button type="button" class="btn s sm" onclick="quickAdd()" title="مشتری جدید">{{ icon('plus') }}</button>{% endif %}</div>
       <input type="hidden" name="party_id" id="pid" value="{{ sel }}"></div>
     {% endif %}
+    {% if mode=='receipt' and not D.id %}{% set sel_cr = F.credit if F.credit is defined else '' %}<div><label>ارزش کالا بدهی ما به</label><select name="credit" id="rcr">
+      <option value="">بدون طرف حساب (مغایرت انبار)</option><option value="items" {{ 'selected' if sel_cr=='items' }}>تامین‌کننده هر کالا</option><option value="person" {{ 'selected' if sel_cr=='person' }}>یک تامین‌کننده مشخص</option></select></div>
+      <div id="rcp" style="display:{{ '' if sel_cr=='person' else 'none' }}"><label>تامین‌کننده</label><select name="credit_person"><option value="">انتخاب...</option>{% for s in sups %}<option value="{{ s.id }}" {{ 'selected' if F.credit_person==s.id|string }}>{{ s.code }} - {{ s.name }}</option>{% endfor %}</select></div>
+      <script>document.getElementById('rcr').onchange=e=>document.getElementById('rcp').style.display=e.target.value==='person'?'':'none'</script>{% endif %}
     {% if mode in ('sale','sale_return') %}{% set vsel_ = fv('visitor_id')|string %}<div><label>ویزیتور (اختیاری)</label><select name="visitor_id" id="vsel"><option value="">—</option>
       {% for v in visitors %}<option value="{{ v.id }}" {{ 'selected' if vsel_==v.id|string }}>{{ v.code }} - {{ v.name }}</option>{% endfor %}</select></div>{% endif %}
     {% if mode=='sale_return' %}<div><label>شماره فاکتور فروش مرجع (اختیاری)</label><input name="ret_of_no" value="{{ fv('ret_of_no') }}" inputmode="numeric"></div>{% endif %}

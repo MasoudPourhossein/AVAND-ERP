@@ -11,6 +11,7 @@
   <div class="f mb">
     <div style="grid-column:1/-1"><label>فایل اکسل (xlsx)</label><input type="file" name="file" accept=".xlsx" required></div>
     <div><label>تاریخ (نرخ‌ها و موجودی اولیه)</label><input name="date" value="{{ today }}"></div>
+    <div><label>موجودی اولیه بدهی ما به</label><select name="opening_credit"><option value="items">تامین‌کننده هر کالا (طلبکار می‌شود)</option><option value="">سرمایه اولیه (کالای خود شرکت)</option></select></div>
     <div><label>انبار موجودی اولیه</label><select name="wh_id">{% for w in whs %}<option value="{{ w.id }}">{{ w.name }}</option>{% endfor %}</select></div>
   </div>
   <div class="bar"><a class="btn s" href="/items/template.xlsx">{{ icon('download') }} دانلود فایل نمونه</a><a class="btn s" href="/items/export.xlsx">{{ icon('download') }} خروجی کالاهای فعلی</a>

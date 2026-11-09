@@ -102,8 +102,20 @@ def post_receipt(rid):
         return unpost("RES", rid)
     val = v1("SELECT SUM(qty*unit_cost) FROM receipt_lines WHERE receipt_id=?", (rid,))
     counter = "capital" if r["kind"] == "opening" else "stock_diff"
-    return post("RES", rid, r["date"], (f"اصلاح موجودی (انبارگردانی) {r['no']}" if r["kind"] == "adjust" else f"رسید انبار {r['no']}" + (" (موجودی اولیه)" if r["kind"] == "opening" else "")),
-                [{"acc": "inventory", "dr": val}, {"acc": counter, "cr": val}])
+    title = (f"اصلاح موجودی (انبارگردانی) {r['no']}" if r["kind"] == "adjust" else f"رسید انبار {r['no']}" + (" (موجودی اولیه)" if r["kind"] == "opening" else ""))
+    lines = [{"acc": "inventory", "dr": val}]
+    if r["kind"] != "adjust" and r["credit"] == "person" and r["person_id"]:      # stock we owe to one supplier
+        lines.append({"acc": party_acc(r["person_id"]), "person": r["person_id"], "cr": val, "descr": title})
+    elif r["kind"] != "adjust" and r["credit"] == "items":                         # stock we owe to each item's supplier
+        for s in q("""SELECT i.supplier_id s, SUM(l.qty*l.unit_cost) v FROM receipt_lines l JOIN items i ON i.id=l.item_id
+                      WHERE l.receipt_id=? GROUP BY i.supplier_id""", (rid,)):
+            if s["s"]:
+                lines.append({"acc": "payable", "person": s["s"], "cr": s["v"], "descr": title})
+            else:
+                lines.append({"acc": counter, "cr": s["v"]})
+    else:
+        lines.append({"acc": counter, "cr": val})
+    return post("RES", rid, r["date"], title, lines)
 
 
 def _cons_cost(cid, date, col):

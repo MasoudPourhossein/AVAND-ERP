@@ -22,6 +22,7 @@
   <div><label>یا نرخ خرید هر کارتن (ریال)</label><input data-ctn-of="buy" type="number" min="0"><small class="muted ctn-hint"></small></div>
   <div><label>نرخ فروش هر باکس (ریال)</label><input name="price" id="npr" type="number" min="0"></div>
   <div><label>یا نرخ فروش هر کارتن (ریال)</label><input data-ctn-of="price" type="number" min="0"><small class="muted ctn-hint"></small></div>
+  <div><label>موجودی اولیه بدهی ما به</label><select name="opening_credit"><option value="items">تامین‌کننده همین کالا (طلبکار می‌شود)</option><option value="">سرمایه اولیه (کالای خود شرکت)</option></select></div>
   <div><label>انبار موجودی اولیه</label><select name="wh_id">{% for w in whs %}<option value="{{ w.id }}">{{ w.name }}</option>{% endfor %}</select></div>
   <div><label>موجودی اولیه (کارتن)</label><input name="init_ctn" id="nic" type="number" min="0" value="0"></div>
   <div><label>+ موجودی اولیه (باکس)</label><input name="init_box" id="nib" type="number" min="0" value="0"></div>
