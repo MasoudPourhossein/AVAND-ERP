@@ -376,6 +376,18 @@ with A.app.test_request_context():
     from core import buy_at as _ba, price_at as _pa
     assert _ba(k2, "1405/09/09") == 0 and _pa(k2, "1405/09/09") > 0
 G("/prices"); G(f"/items/{k2}"); gl_ok()
+# item entered with price 0 + opening stock, then bought: last purchase price and average follow the invoice
+P("/items", {"code": "Z0", "name": "کالای صفر", "supplier_id": sup, "unit": "باکس", "pack": 10, "buy": "0", "price": "0", "init_ctn": 2, "init_box": 0,
+             "wh_id": w1, "date": "1405/09/01", "opening_credit": "items"}); z0 = one("SELECT id FROM items WHERE code='Z0'")
+P("/purchases/new", {"date": "1405/09/02", "wh_id": w1, "party_id": sup, "kind": "buy", "item_id": [z0], "ctn": [2], "box": [0], "price": [1000], "disc": [0], "vat": [0]})
+with A.app.test_request_context():
+    from core import buy_at as _ba2
+    assert _ba2(z0, "1405/09/05") == 1000
+assert round(one(f"SELECT avg_cost FROM items WHERE id={z0}")) == 1000
+assert one(f"SELECT unit_cost FROM receipt_lines WHERE item_id={z0}") == 1000
+P("/sales/new", {"date": "1405/09/03", "wh_id": w1, "party_id": c1, "item_id": [z0], "ctn": [1], "box": [0], "price": [1500], "disc": [0], "vat": [0]})
+assert round(one(f"SELECT cost FROM sales_lines WHERE item_id={z0}")) == 1000
+assert "1,000" in T(G("/items")); gl_ok()
 # ================= weighted-average cost & profit (several purchases, several sales)
 P("/items", {"code": "AVG1", "name": "کالای میانگین", "unit": "عدد", "pack": 1, "date": "1405/09/10"}); av = one("SELECT id FROM items WHERE code='AVG1'")
 PF = lambda d, qty, pr, kind="buy": {"date": d, "wh_id": w1, "party_id": sup, "kind": kind, "item_id": [av], "ctn": [0], "box": [qty], "price": [pr], "disc": [0], "vat": [0]}

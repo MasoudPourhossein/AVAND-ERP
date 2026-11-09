@@ -33,6 +33,12 @@ def recost_item(i, repost):
                                    JOIN sales_lines l ON l.inv_id=s.id LEFT JOIN sales_invoices z ON z.id=s.ret_of
                                    WHERE l.item_id=? GROUP BY s.id, s.kind, s.ret_of, s.cons_id, z.kind, z.cons_id""", (i,))}
     last = _f(buy_at(i, moves[0]["date"])) if moves else _f(buy_at(i, "9999/99/99"))
+    # stock received with cost 0 (e.g. opening stock entered before prices were known) is valued at the item's first known
+    # purchase price, so it does not pull the average down
+    known = next((v for v in [_f(r["u"]) for r in q("""SELECT (l.qty*l.price-l.disc)::float/NULLIF(l.qty,0) u FROM purchase_lines l
+                  JOIN purchases p ON p.id=l.pur_id WHERE l.item_id=? AND p.kind='buy' AND l.qty>0 ORDER BY p.date, l.id""", (i,))] if v > 0), 0) \
+        or _f(v1("SELECT buy FROM prices WHERE item_id=? AND buy>0 ORDER BY date DESC, id DESC LIMIT 1", (i,)))
+    zero_c = {}
     Q, V = 0, 0.0
     sale_c, cons_c, adj_c = {}, {}, {}
     move_upd = []
@@ -46,6 +52,9 @@ def recost_item(i, repost):
                 adj_c[d] = c
             else:
                 c = _f(r["c"]) if r else _f(m["cost"])
+                if c <= 0 and known > 0 and qty > 0:
+                    c = known
+                    zero_c[d] = c
         elif t == "PUR":
             c = pur.get(d, _f(m["cost"]))
         elif t == "FCT":
@@ -102,6 +111,11 @@ def recost_item(i, repost):
         rc = round(c)
         if v1("SELECT COUNT(*) FROM receipt_lines WHERE receipt_id=? AND item_id=? AND unit_cost<>?", (d, i, rc)):
             x("UPDATE receipt_lines SET unit_cost=? WHERE receipt_id=? AND item_id=?", (rc, d, i))
+            repost["RES"].add(d)
+    for d, c in zero_c.items():
+        rc = round(c)
+        if v1("SELECT COUNT(*) FROM receipt_lines WHERE receipt_id=? AND item_id=? AND unit_cost=0", (d, i)):
+            x("UPDATE receipt_lines SET unit_cost=? WHERE receipt_id=? AND item_id=? AND unit_cost=0", (rc, d, i))
             repost["RES"].add(d)
     x("UPDATE items SET avg_cost=? WHERE id=?", (V / Q if Q > 0 else last, i))
 
