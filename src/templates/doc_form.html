@@ -40,7 +40,7 @@
   <div class="note no-print" style="margin:0 0 8px">کد یا ابتدای نام کالا را تایپ کنید • <span class="kbd">F1</span> جستجوی کالا • <span class="kbd">Enter</span> فیلد/ردیف بعد • <span class="kbd">Insert</span> ردیف جدید{% if FULL and not vat_on %} • مالیات ارزش افزوده در تنظیمات غیرفعال است{% endif %}</div>
   <div class="lines-wrap"><table class="lines"><thead><tr><th style="width:36px">#</th><th style="width:44px"></th><th style="width:110px">کد کالا</th><th>نام کالا</th><th style="width:140px">موجودی انبار</th>
     <th style="width:80px">کارتن</th><th style="width:80px">باکس</th><th style="width:140px">جمع تعداد</th>
-    {% if HASPRICE or mode=='amani' %}<th style="width:120px">{{ 'نرخ خرید واحد' if mode in ('receipt','purchase') else 'نرخ فروش واحد' }}</th>{% endif %}
+    {% if HASPRICE or mode=='amani' %}<th style="width:150px">{{ 'نرخ خرید' if mode in ('receipt','purchase') else 'نرخ فروش' }} {% if HASPRICE %}<small class="muted">باکس / کارتن</small>{% else %}واحد{% endif %}</th>{% endif %}
     {% if FULL %}<th style="width:110px">تخفیف ردیف</th><th style="width:70px">مالیات %</th>{% endif %}
     {% if HASPRICE or mode=='amani' %}<th class="n" style="width:130px">مبلغ{{ ' با مالیات' if FULL }}</th>{% endif %}</tr></thead>
   <tbody id="rows"></tbody>
@@ -63,7 +63,8 @@
   <td class="st wide" data-l="موجودی انبار" style="font-size:12px">-</td>
   <td data-l="کارتن"><input name="ctn" type="number" min="0" inputmode="numeric"></td><td data-l="باکس"><input name="box" type="number" min="0" inputmode="numeric"></td>
   <td class="tqr wide" data-l="جمع تعداد" style="font-size:12px">-</td>
-  {% if HASPRICE %}<td data-l="نرخ واحد"><input name="price" type="number" min="0" inputmode="numeric"></td>
+  {% if HASPRICE %}<td data-l="نرخ باکس / کارتن"><input name="price" type="number" min="0" inputmode="numeric" placeholder="نرخ باکس" style="display:block;width:100%">
+    <input class="pctn" type="number" min="0" inputmode="numeric" placeholder="نرخ کارتن" style="margin-top:4px;width:100%"></td>
   {% elif mode=='amani' %}<td class="n pr" data-l="نرخ فروش واحد">-</td>{% endif %}
   {% if FULL %}<td data-l="تخفیف ردیف (ریال)"><input name="disc" type="number" min="0" inputmode="numeric"></td><td data-l="مالیات %"><input name="vat" type="number" min="0" max="100" step="0.01" inputmode="decimal"></td>{% endif %}
   {% if HASPRICE or mode=='amani' %}<td class="n va" data-l="مبلغ">-</td>{% endif %}</tr></template>
@@ -84,7 +85,8 @@ const byId=Object.fromEntries(IT.map(x=>[x.id,x]));
 const avail=()=>{if(MODE!=='purchase')return IT;const s=+(document.getElementById('pid')||{}).value||0;return s?IT.filter(x=>!x.s||x.s===s):IT};
 const f=n=>Number(n||0).toLocaleString('en-US');
 const esc=s=>String(s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
-const pkf=(q,x)=>{q=+q||0;if(!x||x.k<=1||!q)return f(q)+(x?' '+x.u:'');const c=Math.floor(Math.abs(q)/x.k),b=Math.abs(q)%x.k;return f(q)+' '+x.u+' ('+(q<0?'-':'')+f(c)+' '+x.pu+(b?' + '+f(b):'')+')'};
+const pkf=(q,x)=>{q=+q||0;if(!x||x.k<=1||!q)return f(q)+(x?' '+x.u:'');const c=Math.floor(Math.abs(q)/x.k),b=Math.abs(q)%x.k;if(!c)return f(q)+' '+x.u;
+  return (q<0?'-':'')+(c?f(c)+' '+x.pu:'')+(c&&b?' + ':'')+(b?f(b)+' '+x.u:'')+' ('+f(q)+' '+x.u+')'};
 const norm=s=>String(s||'').trim().toLowerCase().replace(/[يى]/g,'ی').replace(/ك/g,'ک');
 const rowsEl=document.getElementById('rows'),PL=document.getElementById('plist'),WS=document.getElementById('whsel');
 const stk=x=>x?((ST[x.id]||{})[WS.value]||0):0;
@@ -108,11 +110,14 @@ function defVat(x){return !VATON?0:(x.v>=0?x.v:VATDEF)}
 function setItem(tr,x){tr.querySelector('input[name=item_id]').value=x?x.id:'';tr.querySelector('.code').value=x?x.code:'';tr.querySelector('.name').value=x?x.name:'';
   tr.querySelector('.st').textContent=x?pkf(stk(x),x):'-';
   if(MODE==='amani')tr.querySelector('.pr').textContent=x?f(x.p):'-';
-  if(HASPRICE){const pi=tr.querySelector('input[name=price]');if(x&&!pi.value)pi.value=defPrice(x)||''}
+  if(HASPRICE){const pi=tr.querySelector('input[name=price]');if(x&&!pi.value)pi.value=defPrice(x)||'';syncCtn(tr,x)}
   if(FULL){const vi=tr.querySelector('input[name=vat]');if(x&&vi.value==='')vi.value=defVat(x)}
   const ci=tr.querySelector('input[name=ctn]');ci.disabled=!!(x&&x.k<=1);if(ci.disabled)ci.value='';ci.placeholder=x&&x.k>1?('×'+x.k):'';
   if(x){const dup=[...rowsEl.querySelectorAll('input[name=item_id]')].filter(h=>h.value==x.id).length>1;if(dup)alert('این کالا قبلا در سند آمده است.')}
   calc();if(x)tr.querySelector(x.k>1?'input[name=ctn]':'input[name=box]').focus()}
+// carton price <-> box price (prices are stored per box)
+function syncCtn(tr,x){const pc=tr.querySelector('.pctn');if(!pc)return;const k=x?x.k:1;pc.disabled=k<=1;pc.style.display=k>1?'block':'none';
+  const p=+tr.querySelector('input[name=price]').value||0;pc.value=k>1&&p?p*k:'';pc.title=k>1?('هر کارتن '+k+' '+x.u):''}
 function addRow(focus){const t=document.getElementById('rt').content.cloneNode(true);const tr=t.querySelector('tr');
   const code=tr.querySelector('.code'),name=tr.querySelector('.name');
   code.addEventListener('input',()=>{tr.querySelector('input[name=item_id]').value='';showList(code,match(avail(),code.value,'code'),x=>setItem(tr,x))});
@@ -124,16 +129,24 @@ function addRow(focus){const t=document.getElementById('rt').content.cloneNode(t
     inp.addEventListener('focus',()=>{lastRow=tr})});
   tr.querySelectorAll('input[type=number]').forEach(i=>{i.addEventListener('input',calc);i.addEventListener('focus',()=>{lastRow=tr});
     i.addEventListener('keydown',e=>{if(e.key==='Enter'){e.preventDefault();if(i.name==='ctn'){tr.querySelector('input[name=box]').focus();return}
-      if(i.name==='box'&&HASPRICE){tr.querySelector('input[name=price]').focus();return}
+      if(i.name==='box'&&HASPRICE){const x=byId[tr.querySelector('input[name=item_id]').value],pc=tr.querySelector('.pctn');
+        (x&&x.k>1&&+tr.querySelector('input[name=ctn]').value&&!+tr.querySelector('input[name=box]').value&&pc?pc:tr.querySelector('input[name=price]')).focus();return}
+      if(i.classList.contains('pctn')&&FULL){tr.querySelector('input[name=disc]').focus();return}
       if(i.name==='price'&&FULL){tr.querySelector('input[name=disc]').focus();return}
       const nx=tr.nextElementSibling||addRow(false);nx.querySelector('.code').focus()}})});
   tr.querySelector('.del').addEventListener('click',()=>{tr.remove();calc()});
+  const pc=tr.querySelector('.pctn'),pi=tr.querySelector('input[name=price]');
+  if(pc){pc.style.display='none';
+    pc.addEventListener('input',()=>{const x=byId[tr.querySelector('input[name=item_id]').value];if(!x)return;const v=+pc.value||0;
+      pi.value=v?Math.round(v/x.k):'';pc.style.background=v&&v%x.k?'#fef3c7':'';pc.title=v%x.k?('نرخ باکس گرد شد: '+f(Math.round(v/x.k))):'';calc()});
+    pi.addEventListener('input',()=>syncCtn(tr,byId[tr.querySelector('input[name=item_id]').value]))}
   rowsEl.appendChild(tr);num();if(focus)code.focus();return tr}
 function num(){rowsEl.querySelectorAll('tr').forEach((r,i)=>r.querySelector('.i').textContent=i+1)}
 function isOut(){return OUT||(MODE==='purchase'&&document.getElementById('pkind').value==='return')}
 function calc(){let q=0,G=0,Dd=0,V=0,A=0;rowsEl.querySelectorAll('tr').forEach(r=>{const x=byId[r.querySelector('input[name=item_id]').value],ci=r.querySelector('input[name=ctn]'),bi=r.querySelector('input[name=box]'),
   n=(+ci.value||0)*(x?x.k:1)+(+bi.value||0);r.querySelector('.tqr').textContent=n?pkf(n,x):'-';
-  if(x)r.querySelector('.st').textContent=pkf(stk(x),x);
+  if(x){const st=stk(x),after=isOut()?st-n:(OUT===false&&MODE!=='transfer'?st+n:null);
+    r.querySelector('.st').innerHTML=pkf(st,x)+(n&&after!==null?'<br><small style="color:'+(after<0?'#dc2626':'#059669')+'">بعد از این سند: '+pkf(after,x)+'</small>':'')}
   q+=n;const over=!!(x&&isOut()&&n>stk(x));ci.style.background=bi.style.background=over?'#fee2e2':'';
   let s=0;if(HASPRICE){const g=n*(+r.querySelector('input[name=price]').value||0);s=g;G+=g;
     if(FULL){const d=+r.querySelector('input[name=disc]').value||0,vr=+r.querySelector('input[name=vat]').value||0,v=Math.round((g-d)*vr/100);Dd+=d;V+=v;s=g-d+v;

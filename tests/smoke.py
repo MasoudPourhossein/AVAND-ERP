@@ -333,6 +333,16 @@ assert stk(k2, w2) == -47
 with eng.begin() as c_:
     c_.execute(text(f"DELETE FROM stock_moves WHERE doc_type='RES' AND doc_id=0"))
 gl_ok()
+# stock count (انبارگردانی): set the real quantity, difference is booked
+G(f"/stock-count?wh={w1}")
+cur = stk(k1, w1); inv0 = accbal("inventory")
+r = P("/stock-count", {"wh": w1, "date": "1405/09/07", "item": [k1, k2], f"c_{k1}": 2, f"b_{k1}": 3, f"c_{k2}": "", f"b_{k2}": ""})
+assert "انبارگردانی ثبت شد" in T(r) and stk(k1, w1) == 2 * 50 + 3, (stk(k1, w1), T(r)[:300])
+assert one("SELECT kind FROM receipts ORDER BY id DESC LIMIT 1") == "adjust" and "اصلاح موجودی" in T(r)
+assert accbal("inventory") != inv0 or cur == 103
+assert "یکی است" in T(P("/stock-count", {"wh": w1, "date": "1405/09/07", "item": [k1], f"c_{k1}": 2, f"b_{k1}": 3}))
+G("/receipts")
+gl_ok()
 print("V4 OK")
 # ================= deletion of base data
 assert "استفاده شده" in T(P(f"/delete/person/{c1}", {})) and one(f"SELECT COUNT(*) FROM persons WHERE id={c1}") == 1
@@ -380,8 +390,8 @@ from openpyxl import load_workbook  # noqa: E402
 hd = [c.value for c in load_workbook(io.BytesIO(cl.get("/items/template.xlsx").data)).active[1]]
 assert "کد کالا" not in hd and "نام کالا" in hd
 wb = Workbook(); ws = wb.active; ws.append(hd)
-ws.append(["دستمال کاغذی", "", "سلولزی جدید", "بسته", "کارتن", 12, 40, 70, 24, ""]); ws.append(["کالای بی‌کد", "", "", "", "", "", "", 11, "", ""])
-ws.append(["آبمیوه", "پخش جدید", "نوشیدنی", "بطری", "کارتن", 6, 30, 50, 0, ""])
+ws.append(["دستمال کاغذی", "", "سلولزی جدید", "بسته", "کارتن", 12, 480, 840, 1, 12, ""]); ws.append(["کالای بی‌کد", "", "", "", "", "", "", 11, "", "", ""])
+ws.append(["آبمیوه", "پخش جدید", "نوشیدنی", "بطری", "کارتن", 6, 30, 50, 0, 0, ""])
 b = io.BytesIO(); wb.save(b); b.seek(0)
 r = ok(cl.post("/items/import", data={"file": (b, "t.xlsx"), "date": "1405/09/02", "wh_id": w1}, content_type="multipart/form-data", follow_redirects=True), "imp2")
 assert "کالای جدید: 2" in T(r) and "به‌روزرسانی: 1" in T(r), T(r)[:400]
@@ -391,6 +401,19 @@ assert "استفاده شده" in T(P(f"/delete/person/{nsup}", {}))
 nc = one("SELECT code FROM items WHERE name='دستمال کاغذی'"); assert nc.isdigit() and int(nc) == int(ac1) + 1
 assert one("SELECT g.code FROM items i JOIN item_groups g ON g.id=i.group_id WHERE i.name='دستمال کاغذی'").isdigit()
 assert one("SELECT SUM(qty) FROM stock_moves m JOIN items i ON i.id=m.item_id WHERE i.name='دستمال کاغذی'") == 24
+assert one("SELECT price FROM prices p JOIN items i ON i.id=p.item_id WHERE i.name='دستمال کاغذی' ORDER BY p.id DESC LIMIT 1") == 70
+assert one("SELECT buy FROM prices p JOIN items i ON i.id=p.item_id WHERE i.name='دستمال کاغذی' ORDER BY p.id DESC LIMIT 1") == 40
+assert "تعداد باکس در کارتن" in hd and "نرخ خرید هر کارتن" in hd
+# Excel stock update: export, fill real stock, import -> adjustment
+we = load_workbook(io.BytesIO(cl.get("/items/export.xlsx").data)); wse = we.active; eh = [c.value for c in wse[1]]
+ci, bi_, ni = eh.index("موجودی واقعی (کارتن)") + 1, eh.index("موجودی واقعی (باکس)") + 1, eh.index("کد کالا") + 1
+for rr_ in range(2, wse.max_row + 1):
+    if wse.cell(rr_, ni).value == "K1":
+        wse.cell(rr_, ci).value = 1; wse.cell(rr_, bi_).value = 7
+b3 = io.BytesIO(); we.save(b3); b3.seek(0)
+r = ok(cl.post("/items/import", data={"file": (b3, "e.xlsx"), "date": "1405/09/08", "wh_id": w1}, content_type="multipart/form-data", follow_redirects=True), "imp3")
+assert "اصلاح موجودی" in T(r) and one(f"SELECT SUM(qty) FROM stock_moves WHERE item_id={k1} AND wh_id={w1}") == 57, T(r)[:400]
+gl_ok()
 gl_ok()
 # backup / restore
 P("/backups", {}); G("/backups")

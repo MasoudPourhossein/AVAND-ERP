@@ -17,7 +17,7 @@
   <div><label>نرخ مالیات % (خالی = پیش‌فرض)</label><input name="vat_rate" inputmode="decimal"></div>
   <div><label>واحد فروش</label><input name="unit" value="باکس"></div>
   <div><label>واحد بسته‌بندی</label><input name="pack_unit" value="کارتن"></div>
-  <div><label>تعداد واحد در هر بسته</label><input name="pack" id="npk" type="number" min="1" value="1" required></div>
+  <div><label>تعداد باکس در هر کارتن</label><input name="pack" id="npk" type="number" min="1" value="1" required></div>
   <div><label>نرخ خرید هر واحد (ریال)</label><input name="buy" id="nbu" type="number" min="0"></div>
   <div><label>نرخ فروش هر واحد (ریال)</label><input name="price" id="npr" type="number" min="0"></div>
   <div><label>انبار موجودی اولیه</label><select name="wh_id">{% for w in whs %}<option value="{{ w.id }}">{{ w.name }}</option>{% endfor %}</select></div>

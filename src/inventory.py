@@ -141,11 +141,65 @@ def receipt_new():
     return render_template("doc_form.html", **form_ctx("receipt"))
 
 
+def stock_count(date, wh, counted, note):
+    """counted: {item_id: real qty (boxes)} -> adjustment receipt (kind 'adjust') with the differences, or None"""
+    lines = []
+    for i, real in counted.items():
+        cur = v1("SELECT SUM(qty) FROM stock_moves WHERE item_id=? AND wh_id=?", (i, wh))
+        if real != cur:
+            from core import buy_at
+            lines.append((i, real - cur, int(buy_at(i, date) or 0)))
+    if not lines:
+        return None, None, 0
+    no, rid = make_receipt(date, wh, "adjust", note or "انبارگردانی", lines)
+    return no, rid, len(lines)
+
+
+@app.route("/stock-count", methods=["GET", "POST"])
+def stock_count_page():
+    wh = to_int(request.values.get("wh")) or default_wh()
+    if not wh_valid(wh):
+        wh = default_wh()
+    F = request.form
+    if request.method == "POST":
+        date = norm_date(F.get("date"))
+        try:
+            if not date:
+                raise ValueError("تاریخ نامعتبر است.")
+            counted = {}
+            for iid in F.getlist("item"):
+                c, b = F.get(f"c_{iid}", "").strip(), F.get(f"b_{iid}", "").strip()
+                if c == "" and b == "":
+                    continue
+                k = v1("SELECT pack FROM items WHERE id=?", (to_int(iid),)) or 1
+                if to_int(c) < 0 or to_int(b) < 0:
+                    raise ValueError("تعداد شمارش منفی نمی‌شود.")
+                counted[to_int(iid)] = to_int(c) * k + to_int(b)
+            no, rid, n = stock_count(date, wh, counted, (F.get("note") or "").strip())
+            db().commit()
+            if rid:
+                flash(f"انبارگردانی ثبت شد: اصلاح موجودی {n} کالا با سند شماره {no}.", "ok")
+                return redirect(url_for("receipt_view", rid=rid))
+            flash("موجودی شمارش‌شده با سیستم یکی است؛ سندی لازم نبود.", "ok")
+        except ValueError as e:
+            db().rollback()
+            flash(str(e), "bad")
+        return redirect(url_for("stock_count_page", wh=wh))
+    rows = [r for r in stock_rows(wh_id=wh) if r["active"] or r["st"]]
+    sup, gid = to_int(request.args.get("supplier")), to_int(request.args.get("group"))
+    if sup:
+        rows = [r for r in rows if r["supplier_id"] == sup]
+    if gid:
+        rows = [r for r in rows if r["group_id"] == gid]
+    from masters import suppliers, _groups
+    return render_template("stock_count.html", rows=rows, wh=wh, whs=warehouses_list(), sups=suppliers(), groups=_groups(), sup=sup, gid=gid)
+
+
 @app.route("/receipts/<int:rid>")
 def receipt_view(rid):
     r = q("SELECT r.*, w.name whname FROM receipts r JOIN warehouses w ON w.id=r.wh_id WHERE r.id=?", (rid,), one=True) or abort(404)
     lines = item_lines("receipt_lines", "receipt_id", rid)
-    doc = {"title": DOC["RES"] + (" (موجودی اولیه)" if r["kind"] == "opening" else ""), "no": r["no"], "date": r["date"], "note": r["note"],
+    doc = {"title": "اصلاح موجودی (انبارگردانی)" if r["kind"] == "adjust" else DOC["RES"] + (" (موجودی اولیه)" if r["kind"] == "opening" else ""), "no": r["no"], "date": r["date"], "note": r["note"],
            "extra": f"انبار: {r['whname']}",
            "cols": ["کد کالا", "نام کالا", "تعداد", "نرخ خرید واحد", "مبلغ"],
            "rows": [[l["code"], l["name"], pkr(l["qty"], l), money(l["unit_cost"]), money(l["qty"] * l["unit_cost"])] for l in lines],

@@ -1,0 +1,32 @@
+{% extends "base.html" %}{% from "_m.html" import icon %}{% block h %}انبارگردانی (اصلاح موجودی){% endblock %}
+{% block body %}
+<form class="card no-print bar" method="get">
+  <select name="wh" onchange="this.form.submit()">{% for w in whs %}<option value="{{ w.id }}" {{ 'selected' if w.id==wh }}>انبار: {{ w.name }}</option>{% endfor %}</select>
+  <select name="supplier"><option value="">همه تامین‌کنندگان</option>{% for s in sups %}<option value="{{ s.id }}" {{ 'selected' if s.id==sup }}>{{ s.name }}</option>{% endfor %}</select>
+  <select name="group"><option value="">همه گروه‌ها</option>{% for g_ in groups %}<option value="{{ g_.id }}" {{ 'selected' if g_.id==gid }}>{{ g_.name }}</option>{% endfor %}</select>
+  <input id="flt" placeholder="جستجوی کالا..." style="max-width:220px"><button class="btn s">نمایش</button></form>
+<form method="post" class="card" id="cf">
+  <input type="hidden" name="wh" value="{{ wh }}">
+  <p class="muted">موجودی واقعی هر کالا را به کارتن و باکس وارد کنید (خانه خالی = بدون تغییر). سیستم اختلاف را با یک سند «اصلاح موجودی» ثبت می‌کند و مانده می‌شود همان عدد شمارش.</p>
+  <div class="f mb"><div><label>تاریخ</label><input name="date" value="{{ today }}" required></div><div style="grid-column:span 2"><label>توضیح</label><input name="note" placeholder="انبارگردانی پایان ماه"></div></div>
+  <div class="lines-wrap"><table class="lines"><thead><tr><th>کد</th><th>کالا</th><th>بسته‌بندی</th><th>موجودی سیستم</th><th style="width:100px">شمارش کارتن</th><th style="width:100px">شمارش باکس</th><th>اختلاف</th></tr></thead><tbody>
+  {% for r in rows %}<tr data-k="{{ r.pack or 1 }}" data-s="{{ r.st }}" data-u="{{ r.unit }}" data-pu="{{ r.pack_unit }}" data-t="{{ r.code }} {{ r.name }}">
+    <td data-l="کد">{{ r.code }}<input type="hidden" name="item" value="{{ r.id }}"></td><td class="wide" data-l="کالا">{{ r.name }}</td>
+    <td data-l="بسته‌بندی" style="font-size:12px">{% if r.pack > 1 %}هر {{ r.pack_unit }} {{ r.pack }} {{ r.unit }}{% else %}{{ r.unit }}{% endif %}</td>
+    <td class="wide" data-l="موجودی سیستم" style="font-size:12px">{{ pkr(r.st, r) }}</td>
+    <td data-l="شمارش کارتن"><input name="c_{{ r.id }}" type="number" min="0" inputmode="numeric" {{ 'disabled' if (r.pack or 1) <= 1 }}></td>
+    <td data-l="شمارش باکس"><input name="b_{{ r.id }}" type="number" min="0" inputmode="numeric"></td><td class="df wide" data-l="اختلاف" style="font-size:12px"></td></tr>
+  {% else %}<tr><td colspan="7" class="muted">کالایی نیست.</td></tr>{% endfor %}</tbody></table></div>
+  <div class="bar" style="margin-top:12px"><span id="sm" class="muted"></span><span class="sp"></span><button class="btn g" onclick="return confirm('اختلاف‌ها به عنوان اصلاح موجودی ثبت شود؟')">{{ icon('file-check') }} ثبت انبارگردانی</button></div>
+</form>
+{% endblock %}
+{% block js %}<script>
+const f=n=>Number(n||0).toLocaleString('en-US');
+const pkf=(q,k,u,pu)=>{if(k<=1||!q)return f(q)+' '+u;const c=Math.floor(Math.abs(q)/k),b=Math.abs(q)%k;if(!c)return f(q)+' '+u;return (q<0?'-':'')+(c?f(c)+' '+pu:'')+(c&&b?' + ':'')+(b?f(b)+' '+u:'')+' ('+f(q)+' '+u+')'};
+function calc(){let n=0;document.querySelectorAll('#cf tr[data-k]').forEach(r=>{const [c,b]=r.querySelectorAll('input[type=number]'),k=+r.dataset.k,s=+r.dataset.s,d=r.querySelector('.df');
+  if(c.value===''&&b.value===''){d.textContent='';return}const real=(+c.value||0)*k+(+b.value||0),x=real-s;n+=x?1:0;
+  d.innerHTML=x?'<span style="color:'+(x<0?'#dc2626':'#059669')+'">'+(x>0?'+':'')+pkf(x,k,r.dataset.u,r.dataset.pu)+'</span>':'بدون اختلاف'});
+  document.getElementById('sm').textContent=n?n+' کالا اختلاف دارد':''}
+document.getElementById('cf').addEventListener('input',calc);
+document.getElementById('flt').addEventListener('input',e=>{const v=e.target.value.trim();document.querySelectorAll('#cf tr[data-k]').forEach(r=>r.style.display=!v||r.dataset.t.includes(v)?'':'none')});
+</script>{% endblock %}

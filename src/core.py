@@ -116,7 +116,7 @@ ACCESS = {
     "invoice_remove": (["users"], ["users"]), "payment_delete": (["void"], ["void"]),
     "users": (["users"], ["users"]), "user_edit": (["users"], ["users"]), "user_delete": (["users"], ["users"]),
     "backup": (["users"], []), "backups": (["users"], ["users"]), "backup_file": (["users"], []),
-    "backup_delete": (["users"], ["users"]), "supplier_recode": (["items"], ["items"]), "backup_restore": (["users"], ["users"]), "settings": (["users"], ["users"]),
+    "backup_delete": (["users"], ["users"]), "stock_count_page": (["receipt", "rep_stock"], ["receipt"]), "supplier_recode": (["items"], ["items"]), "backup_restore": (["users"], ["users"]), "settings": (["users"], ["users"]),
     "tr_list": (["treasury", "rep_fin"], []), "tr_new": (["treasury"], ["treasury"]), "tr_view": (["treasury", "rep_fin", "payment"], []),
     "tr_delete": (["void"], ["void"]), "inv_receive": (["payment", "treasury"], ["payment", "treasury"]),
     "cheques": (["treasury", "rep_fin"], []), "cheque_view": (["treasury", "rep_fin"], ["treasury"]),
@@ -494,16 +494,18 @@ app.add_template_filter(money, "m")
 
 
 def pk(qty, pack=1, unit="باکس", pack_unit="کارتن"):
-    """505 باکس (10 کارتن + 5)"""
+    """10 کارتن + 5 باکس (505 باکس)"""
     qty = int(qty or 0)
     pack = int(pack or 1)
     base = f"{qty:,} {unit or ''}".strip()
     if pack <= 1 or qty == 0:
         return base
     c, b = divmod(abs(qty), pack)
+    if not c:
+        return base
     sign = "-" if qty < 0 else ""
-    part = f"{sign}{c:,} {pack_unit or 'کارتن'}" + (f" + {b:,}" if b else "")
-    return f"{base} ({part})"
+    part = (f"{c:,} {pack_unit or 'کارتن'}" if c else "") + (" + " if c and b else "") + (f"{b:,} {unit or ''}".strip() if b else "")
+    return f"{sign}{part} ({base})"
 
 
 def pkr(qty, r):

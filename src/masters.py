@@ -244,8 +244,12 @@ def groups():
 # ---------- excel
 XL_COLS = ["کد کالا", "نام کالا", "کد تامین‌کننده", "نام تامین‌کننده", "کد گروه", "نام گروه", "واحد فروش", "واحد بسته‌بندی", "تعداد در بسته",
            "نرخ خرید", "نرخ فروش", "موجودی اولیه (واحد فروش)", "بارکد", "فعال (1/0)"]
+# carton-based columns (template); old box-based columns are still accepted
+XL_ALIAS = {"تعداد باکس در کارتن": "تعداد در بسته", "نرخ خرید هر باکس": "نرخ خرید", "نرخ فروش هر باکس": "نرخ فروش"}
+XL_CTN = ["نرخ خرید هر کارتن", "نرخ فروش هر کارتن", "موجودی اولیه (کارتن)", "موجودی اولیه (باکس)", "موجودی واقعی (کارتن)", "موجودی واقعی (باکس)"]
 # template for new items: no codes, the system assigns item and group codes
-TPL_COLS = ["نام کالا", "نام تامین‌کننده", "نام گروه", "واحد فروش", "واحد بسته‌بندی", "تعداد در بسته", "نرخ خرید", "نرخ فروش", "موجودی اولیه (واحد فروش)", "بارکد"]
+TPL_COLS = ["نام کالا", "نام تامین‌کننده", "نام گروه", "واحد فروش", "واحد بسته‌بندی", "تعداد باکس در کارتن", "نرخ خرید هر کارتن", "نرخ فروش هر کارتن",
+            "موجودی اولیه (کارتن)", "موجودی اولیه (باکس)", "بارکد"]
 
 
 def _xl(rows, title, extra_cols=(), cols=None):
@@ -276,7 +280,7 @@ def _xl(rows, title, extra_cols=(), cols=None):
 
 @app.route("/items/template.xlsx")
 def items_template():
-    buf = _xl([["نمونه: شامپو ۲۰۰ میل", "پخش نمونه", "بهداشتی", "باکس", "کارتن", 50, 600000, 850000, 500, ""]], "کالاها", cols=TPL_COLS)
+    buf = _xl([["نمونه: شامپو ۲۰۰ میل", "پخش نمونه", "بهداشتی", "باکس", "کارتن", 12, 7200000, 10200000, 40, 0, ""]], "کالاها", cols=TPL_COLS)
     return send_file(buf, as_attachment=True, download_name="items_template.xlsx",
                      mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
 
@@ -289,7 +293,7 @@ def items_export():
         g_ = gmap.get(r["group_id"])
         rows.append([r["code"], r["name"], r["sup_code"] or "", r["sup_name"] or "", g_["code"] if g_ else "", g_["name"] if g_ else "", r["unit"], r["pack_unit"], r["pack"],
                      int(r["buy"] or 0), int(r["price"] or 0), None, r["barcode"] or "", r["active"], int(r["st"])])
-    buf = _xl(rows, "کالاها", ["موجودی فعلی (فقط نمایش)"])
+    buf = _xl(rows, "کالاها", ["موجودی فعلی (فقط نمایش)", "موجودی واقعی (کارتن)", "موجودی واقعی (باکس)"])
     return send_file(buf, as_attachment=True, download_name=f"items_{today_j().replace('/', '')}.xlsx",
                      mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
 
@@ -323,7 +327,10 @@ def items_import():
             flash("فایل خالی است.", "bad")
             return redirect(url_for("items_import"))
         head = [_cell(h) for h in rows[0]]
-        idx = {c: head.index(c) for c in XL_COLS if c in head}
+        idx = {c: head.index(c) for c in XL_COLS + XL_CTN if c in head}
+        for a, c in XL_ALIAS.items():
+            if a in head and c not in idx:
+                idx[c] = head.index(a)
         if "نام کالا" not in idx:
             flash("ستون «نام کالا» در ردیف اول لازم است. فایل نمونه را دانلود کنید.", "bad")
             return redirect(url_for("items_import"))
@@ -343,7 +350,7 @@ def items_import():
                 errors.append((n, f"کد {code} تکراری در فایل" if code else f"نام «{name}» تکراری در فایل")); continue
             seen.add(key)
             nums = {}
-            for c in ("تعداد در بسته", "نرخ خرید", "نرخ فروش", "موجودی اولیه (واحد فروش)"):
+            for c in ("تعداد در بسته", "نرخ خرید", "نرخ فروش", "موجودی اولیه (واحد فروش)") + tuple(XL_CTN):
                 raw = get(r, c)
                 v = to_int(raw, None) if raw else None
                 if raw and (v is None or v < 0):
@@ -362,11 +369,17 @@ def items_import():
             result = {"errors": errors}
         else:
             created = updated = priced = 0
-            opening = []
+            opening, counted = [], {}
             for code, name, ex, sup, gcode, gname, unit, punit, nums, barcode, active in plan:
                 gid = group_by_name(gname, gcode) if (gcode or gname) else None
                 sid = supplier_by(*sup) if (sup[0] or sup[1]) else None
                 pack = nums["تعداد در بسته"]
+                k = pack or (ex["pack"] if ex else 1) or 1
+                for col, ccol in (("نرخ خرید", "نرخ خرید هر کارتن"), ("نرخ فروش", "نرخ فروش هر کارتن")):
+                    if nums[col] is None and nums[ccol] is not None:      # carton price -> box price
+                        nums[col] = round(nums[ccol] / k)
+                if nums["موجودی اولیه (کارتن)"] or nums["موجودی اولیه (باکس)"]:
+                    nums["موجودی اولیه (واحد فروش)"] = (nums["موجودی اولیه (واحد فروش)"] or 0) + (nums["موجودی اولیه (کارتن)"] or 0) * k + (nums["موجودی اولیه (باکس)"] or 0)
                 if ex:
                     x("""UPDATE items SET name=COALESCE(NULLIF(?,''),name), group_id=COALESCE(?,group_id), unit=COALESCE(NULLIF(?,''),unit),
                          pack_unit=COALESCE(NULLIF(?,''),pack_unit), pack=COALESCE(?,pack), barcode=COALESCE(NULLIF(?,''),barcode),
@@ -385,6 +398,8 @@ def items_import():
                     if (nb, np_) != (cb, cp):
                         x("INSERT INTO prices(item_id,date,price,buy) VALUES(?,?,?,?)", (iid, date, np_, nb))
                         priced += 1
+                if nums["موجودی واقعی (کارتن)"] is not None or nums["موجودی واقعی (باکس)"] is not None:
+                    counted[iid] = (nums["موجودی واقعی (کارتن)"] or 0) * k + (nums["موجودی واقعی (باکس)"] or 0)
                 oq = nums["موجودی اولیه (واحد فروش)"]
                 if oq:
                     opening.append((iid, oq, b if b is not None else int(buy_at(iid, date) or 0)))
@@ -392,8 +407,12 @@ def items_import():
             if opening:
                 from inventory import make_receipt
                 rno, _ = make_receipt(date, wh, "opening", "ورود گروهی از اکسل", opening)
+            ano = adj = None
+            if counted:
+                from inventory import stock_count
+                ano, _, adj = stock_count(date, wh, counted, "انبارگردانی از اکسل")
             db().commit()
-            result = {"created": created, "updated": updated, "priced": priced, "rno": rno, "opening": len(opening)}
+            result = {"created": created, "updated": updated, "priced": priced, "rno": rno, "opening": len(opening), "ano": ano, "adj": adj}
     return render_template("items_import.html", result=result, whs=warehouses_list())
 
 

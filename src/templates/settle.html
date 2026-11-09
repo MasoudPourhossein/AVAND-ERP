@@ -43,7 +43,7 @@
 {% endblock %}
 {% block js %}<script>
 const f=n=>Number(n||0).toLocaleString('en-US');
-const pkf=(q,k,u,pu)=>{if(k<=1||!q)return f(q)+' '+u;const c=Math.floor(Math.abs(q)/k),b=Math.abs(q)%k;return (q<0?'-':'')+f(Math.abs(q))+' '+u+' ('+f(c)+' '+pu+(b?' + '+f(b):'')+')'};
+const pkf=(q,k,u,pu)=>{if(k<=1||!q)return f(q)+' '+u;const c=Math.floor(Math.abs(q)/k),b=Math.abs(q)%k;if(!c)return f(q)+' '+u;return (q<0?'-':'')+(c?f(c)+' '+pu:'')+(c&&b?' + ':'')+(b?f(b)+' '+u:'')+' ('+f(q)+' '+u+')'};
 const L={};document.querySelectorAll('#sf > .card:first-child tr[data-lid]').forEach(r=>L[r.dataset.lid]={r,q:+r.dataset.q,k:+r.dataset.k,u:r.dataset.u,pu:r.dataset.pu});
 let bn=0;const BL=document.getElementById('blks');
 function addBlk(){const k=bn++;const t=document.getElementById('bt').content.cloneNode(true),b=t.querySelector('.blk');

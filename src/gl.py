@@ -102,7 +102,7 @@ def post_receipt(rid):
         return unpost("RES", rid)
     val = v1("SELECT SUM(qty*unit_cost) FROM receipt_lines WHERE receipt_id=?", (rid,))
     counter = "capital" if r["kind"] == "opening" else "stock_diff"
-    return post("RES", rid, r["date"], f"رسید انبار {r['no']}" + (" (موجودی اولیه)" if r["kind"] == "opening" else ""),
+    return post("RES", rid, r["date"], (f"اصلاح موجودی (انبارگردانی) {r['no']}" if r["kind"] == "adjust" else f"رسید انبار {r['no']}" + (" (موجودی اولیه)" if r["kind"] == "opening" else "")),
                 [{"acc": "inventory", "dr": val}, {"acc": counter, "cr": val}])
 
 
