@@ -1,5 +1,5 @@
-{% extends "base.html" %}{% from "_m.html" import period, icon %}{% block h %}حواله‌های بین انبار{% endblock %}
-{% block body %}<div class="card">
+{% extends "base.html" %}{% from "_m.html" import period, icon, xbtns %}{% block h %}حواله‌های بین انبار{% endblock %}
+{% block body %}<div class="bar no-print" style="justify-content:flex-end;margin-bottom:8px">{{ xbtns() }}</div><div class="card">
 {% if can("transfer") %}<div class="bar no-print"><a class="btn g" href="/transfers/new">{{ icon('plus') }} حواله جدید</a></div>{% endif %}
 {{ period(f,t) }}
 <table><tr><th>شماره</th><th>تاریخ</th><th>از انبار</th><th>به انبار</th><th>توضیح</th><th class="n">تعداد</th><th class="no-print"></th></tr>

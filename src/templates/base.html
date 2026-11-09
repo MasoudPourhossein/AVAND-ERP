@@ -100,6 +100,7 @@
     {% with msgs = get_flashed_messages(with_categories=true) %}{% for c,m in msgs %}<div class="flash {{c}}">{{ m }}</div>{% endfor %}{% endwith %}
     {% block body %}{% endblock %}
   </main>
+  <div class="print-foot"><span>{{ COMPANY }}</span><span>تاریخ چاپ: {{ today }}{% if user %} — {{ user.fullname or user.username }}{% endif %}</span><span dir="ltr">{{ POWERED }}</span></div>
 </div>
 <div class="modal" id="gsm" onclick="if(event.target===this)closeSearch()">
   <div class="modal-box"><div class="mh"><input id="gsq" placeholder="جستجوی کالا، ویزیتور، شماره فاکتور، رسید، سند دریافت..." autocomplete="off"><span class="kbd">Esc</span></div>

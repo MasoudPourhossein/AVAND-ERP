@@ -4,7 +4,8 @@ from core import stock_snapshot, worse_negative
 from core import (app, q, x, v1, db, next_no, to_int, uid, uname, price_at, buy_at, add_moves, del_moves, check_stock, default_wh,
                   INV_SQL, CONS_SQL, inv_paid, period, money, pkr, DOC, METHOD, can)
 from inventory import parse_lines, form_ctx, doc_out, wh_valid, item_lines, line_vat, doc_init_lines, _no_negative, _can_remove_moves
-from core import vat_of
+from core import vat_of, inv_status
+import export
 from jalali import today_j, norm_date
 
 
@@ -81,7 +82,14 @@ def amani_list():
     last = session.pop("last_cons", None)
     last = q(CONS_SQL + " WHERE c.id=? AND c.status='settled'", (last,), one=True) if last else None
     last_invs = q(INV_SQL + " WHERE s.cons_id=? ORDER BY s.no", (last["id"],)) if last else []
-    return render_template("amani_list.html", rows=q(sql + " ORDER BY c.date DESC, c.no DESC", args), st=st, f=f, t=t,
+    rows = q(sql + " ORDER BY c.date DESC, c.no DESC", args)
+    x_ = export.list_out("فاکتورهای امانی", ("امانی‌های باز" if st == "open" else f"از {f} تا {t}"),
+                         [("شماره", "text"), ("تاریخ", "text"), ("تحویل‌گیرنده", "text"), ("انبار", "text"), ("تعداد", "num"), ("ارزش امانی", "money"), ("وضعیت", "text")],
+                         [[c["no"], c["date"], c["vname"], c["whname"], c["qty"], c["amani_value"], "باز" if c["status"] == "open" else f"تسویه {c['settle_date'] or ''}"] for c in rows],
+                         ["جمع", "", "", "", sum(c["qty"] for c in rows), sum(c["amani_value"] for c in rows), ""])
+    if x_:
+        return x_
+    return render_template("amani_list.html", rows=rows, st=st, f=f, t=t,
                            last=last, last_invs=last_invs, visitors=_visitors(), vid=vid)
 
 
@@ -396,6 +404,13 @@ def invoices():
     rows = q(sql + " ORDER BY s.date DESC, s.no DESC", args)
     if only == "diff":
         rows = [r for r in rows if r["kind"] != "return" and r["rem"] != 0]
+    KN = {"direct": "مستقیم", "consign": "امانی", "return": "برگشت از فروش"}
+    R = [[r["no"], r["date"], KN.get(r["kind"], r["kind"]), r["cname"], r["vname"] or "", r["total"] * r["sg"], r["paid"], r["rem"], inv_status(r)[0]] for r in rows]
+    x_ = export.list_out("فاکتورهای فروش", f"از {f} تا {t}", [("شماره", "text"), ("تاریخ", "text"), ("نوع", "text"), ("مشتری", "text"), ("ویزیتور", "text"),
+                         ("مبلغ فاکتور", "money"), ("دریافتی", "money"), ("مانده", "money"), ("وضعیت", "text")], R,
+                         ["جمع", "", "", "", "", sum(r[5] for r in R), sum(r[6] for r in R), sum(r[7] for r in R), ""])
+    if x_:
+        return x_
     return render_template("invoices.html", rows=rows, f=f, t=t, vid=vid, cid=cid, only=only, visitors=_visitors(), customers=_customers())
 
 

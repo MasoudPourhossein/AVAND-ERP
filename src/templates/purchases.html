@@ -1,5 +1,5 @@
-{% extends "base.html" %}{% from "_m.html" import period, icon %}{% block h %}فاکتورهای خرید{% endblock %}
-{% block body %}<div class="card">
+{% extends "base.html" %}{% from "_m.html" import period, icon, xbtns %}{% block h %}فاکتورهای خرید{% endblock %}
+{% block body %}<div class="bar no-print" style="justify-content:flex-end;margin-bottom:8px">{{ xbtns() }}</div><div class="card">
 {% if can("purchase") %}<div class="bar no-print"><a class="btn g" href="/purchases/new">{{ icon('plus') }} فاکتور خرید / برگشت</a></div>{% endif %}
 {% call period(f,t) %}<select name="supplier"><option value="">همه تامین‌کنندگان</option>{% for s in sups %}<option value="{{ s.id }}" {{ 'selected' if s.id==sid }}>{{ s.code }} - {{ s.name }}</option>{% endfor %}</select>{% endcall %}
 <table><tr><th>شماره</th><th>نوع</th><th>تاریخ</th><th>تامین‌کننده</th><th>انبار</th><th>ش. فاکتور تامین‌کننده</th><th class="n">تعداد</th><th class="n">مبلغ</th><th class="no-print"></th></tr>

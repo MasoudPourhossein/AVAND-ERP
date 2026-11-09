@@ -1,5 +1,5 @@
-{% extends "base.html" %}{% from "_m.html" import period, vsel, icon %}{% block h %}فاکتورهای فروش{% endblock %}
-{% block body %}<div class="card">
+{% extends "base.html" %}{% from "_m.html" import period, vsel, icon, xbtns %}{% block h %}فاکتورهای فروش{% endblock %}
+{% block body %}<div class="bar no-print" style="justify-content:flex-end;margin-bottom:8px">{{ xbtns() }}</div><div class="card">
 {% if can('sale') %}<div class="bar no-print"><a class="btn g" href="/sales/new">{{ icon('plus') }} فاکتور فروش</a><a class="btn o" href="/sales/return/new">{{ icon('undo-2') }} برگشت از فروش</a></div>{% endif %}
 {% call period(f,t) %}{{ vsel(visitors,vid) }}
 <select name="customer"><option value="">همه مشتریان</option>{% for c in customers %}<option value="{{ c.id }}" {{ 'selected' if c.id==cid }}>{{ c.code }} - {{ c.name }}</option>{% endfor %}</select>

@@ -1,5 +1,5 @@
-{% extends "base.html" %}{% from "_m.html" import icon %}{% block h %}اشخاص و طرف حساب‌ها{% endblock %}
-{% block body %}
+{% extends "base.html" %}{% from "_m.html" import icon, xbtns %}{% block h %}اشخاص و طرف حساب‌ها{% endblock %}
+{% block body %}<div class="bar no-print" style="justify-content:flex-end;margin-bottom:8px">{{ xbtns() }}</div>
 <div class="bar no-print">
   <a class="btn {{ '' if not kind else 's' }}" href="/persons">همه</a>
   {% for k, lab in PERSON_KINDS.items() %}<a class="btn {{ '' if kind==k else 's' }}" href="/persons?kind={{ k }}">{{ lab }} ({{ counts[k] }})</a>{% endfor %}

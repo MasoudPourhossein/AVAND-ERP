@@ -12,3 +12,4 @@
 {% for v in visitors %}<option value="{{v.id}}" {{ 'selected' if v.id==vid }}>{{v.code}} - {{v.name}}</option>{% endfor %}</select>
 {% endmacro %}
 {% macro delta(p) %}{% if p is none %}<span class="delta flat">—</span>{% elif p >= 0 %}<span class="delta up">▲ {{ '%.1f'|format(p) }}%</span>{% else %}<span class="delta down">▼ {{ '%.1f'|format(-p) }}%</span>{% endif %}{% endmacro %}
+{% macro xbtns() %}<span class="no-print" style="display:inline-flex;gap:6px;margin-inline-start:auto"><a class="btn s sm" href="{{ xurl('xlsx') }}">{{ icon('file-spreadsheet') }} Excel</a><a class="btn s sm" href="{{ xurl('pdf') }}">{{ icon('file-text') }} PDF</a><button type="button" class="btn s sm" onclick="print()">{{ icon('printer') }} چاپ</button></span>{% endmacro %}

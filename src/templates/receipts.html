@@ -1,5 +1,5 @@
-{% extends "base.html" %}{% from "_m.html" import period %}{% block h %}رسیدهای انبار{% endblock %}
-{% block body %}<div class="card">
+{% extends "base.html" %}{% from "_m.html" import period, xbtns %}{% block h %}رسیدهای انبار{% endblock %}
+{% block body %}<div class="bar no-print" style="justify-content:flex-end;margin-bottom:8px">{{ xbtns() }}</div><div class="card">
 {% if can("receipt") %}<div class="bar no-print"><a class="btn g" href="/receipts/new">+ رسید جدید</a></div>{% endif %}
 {{ period(f,t) }}
 <table><tr><th>شماره رسید</th><th>تاریخ</th><th>انبار</th><th>نوع</th><th>توضیح</th><th class="n">تعداد اقلام</th><th class="n">جمع تعداد</th><th class="n">مبلغ خرید</th><th class="no-print"></th></tr>

@@ -456,4 +456,8 @@ r = ok(cl.post("/backups/restore", data={"file": (b2, "up.dump"), "confirm": "ب
                content_type="multipart/form-data", follow_redirects=True), "upload restore")
 assert "بازیابی شد" in T(r)
 P("/login", {"username": "admin", "password": "secret1"}); assert one("SELECT COUNT(*) FROM persons") == n0
+for u in ["/items", "/persons", "/invoices", "/purchases", "/receipts", "/transfers", "/amani?status=all"]:
+    for fm in ("xlsx", "pdf"):
+        r_ = cl.get(u + ("&" if "?" in u else "?") + "fmt=" + fm + "&from=1405/01/01&to=1405/12/29")
+        assert r_.status_code == 200 and r_.mimetype in ("application/pdf", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"), (u, fm, r_.status_code)
 print("SMOKE OK")

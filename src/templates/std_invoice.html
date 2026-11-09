@@ -9,7 +9,8 @@
 @font-face{font-family:VZ;src:url({{ url_for('static', filename='fonts/Vazirmatn-FD-Regular.woff2') }}) format("woff2");font-weight:400}
 @font-face{font-family:VZ;src:url({{ url_for('static', filename='fonts/Vazirmatn-FD-Bold.woff2') }}) format("woff2");font-weight:700}
 {% endif %}
-@page{size:A4 landscape;margin:8mm 8mm 10mm}
+@page{size:A4 landscape;margin:8mm 8mm 12mm;
+  @bottom-center{content:"صفحه " counter(page) " از " counter(pages);font-family:VZ;font-size:7.5pt;color:#777}}
 *{box-sizing:border-box}
 body{font-family:VZ,Tahoma,sans-serif;color:#111;margin:0;font-size:10pt;background:{{ '#fff' if pdf else '#eef1f6' }}}
 .sheet{background:#fff;max-width:290mm;margin:{{ '0' if pdf else '16px auto' }};padding:{{ '0' if pdf else '8mm' }};{{ '' if pdf else 'box-shadow:0 2px 14px rgba(0,0,0,.08);border-radius:10px' }}}
@@ -22,8 +23,7 @@ body{font-family:VZ,Tahoma,sans-serif;color:#111;margin:0;font-size:10pt;backgro
 .hd .no{width:170px;font-size:9.5pt;line-height:1.9}.hd .no b{font-size:10.5pt}
 .box{border:1.5px solid #111;border-radius:6px;margin-top:6px}
 .box .t{background:#e9ecf2;font-weight:700;text-align:center;padding:2px;border-bottom:1px solid #111;font-size:9.5pt}
-.grid{display:grid;grid-template-columns:2.2fr 1fr 1fr 1fr;gap:2px 14px;padding:5px 10px;font-size:9pt}
-.grid .w{grid-column:span 2}.grid span{color:#555}
+table.pt{margin:0;font-size:9pt}table.pt td{border:0;text-align:right;padding:3px 10px;width:25%}table.pt span{color:#555}
 .meta{display:flex;flex-wrap:wrap;gap:4px 22px;padding:5px 10px;font-size:9pt}.meta span{color:#555}
 table{width:100%;border-collapse:collapse;margin-top:6px;font-size:8.6pt}
 th{background:#e9ecf2;border:1px solid #111;padding:4px 3px;font-weight:700;font-size:8pt}
@@ -36,7 +36,7 @@ thead{display:table-header-group}tr{page-break-inside:avoid}
 .sign{display:flex;gap:6px;margin-top:6px}.sign>div{flex:1;border:1.5px solid #111;border-radius:6px;height:70px;padding:5px 10px;font-size:9pt;color:#555}
 .ft{display:flex;justify-content:space-between;font-size:7.5pt;color:#777;margin-top:4px}
 @media print{body{background:#fff}.bar{display:none}.sheet{margin:0;padding:0;box-shadow:none;max-width:none}}
-@media (max-width:760px){.sheet{padding:10px;border-radius:0;margin:0}.grid{grid-template-columns:1fr 1fr}.hd{flex-wrap:wrap}.hd .lg,.hd .no{width:auto}
+@media (max-width:760px){.sheet{padding:10px;border-radius:0;margin:0}table.pt td{display:block;width:auto}.hd{flex-wrap:wrap}.hd .lg,.hd .no{width:auto}
  .tw{overflow-x:auto}table{min-width:900px}.sum,.sign{flex-direction:column}}
 </style></head><body>
 {% if not pdf %}<div class="bar">
@@ -51,12 +51,13 @@ thead{display:table-header-group}tr{page-break-inside:avoid}
     <div class="no">شماره: <b>{{ d.no }}</b><br>تاریخ: <b>{{ d.date }}</b></div>
   </div>
   {% for lab, p in ((d.seller_label, d.seller), (d.buyer_label, d.buyer)) %}
-  <div class="box"><div class="t">{{ lab }}</div><div class="grid">
-    <div class="w"><span>نام شخص حقیقی / حقوقی: </span><b>{{ p.name }}</b>{{ ' (' ~ p.code ~ ')' if p.code }}</div>
-    <div><span>کد اقتصادی: </span>{{ p.economic_code }}</div><div><span>شناسه / کد ملی: </span>{{ p.national_id }}</div>
-    <div><span>شماره ثبت: </span>{{ p.reg_no }}</div><div><span>کد پستی: </span>{{ p.postal_code }}</div><div><span>تلفن: </span><span dir="ltr" style="color:#111">{{ p.phone }}</span></div>
-    <div><span>نوع: </span>{{ p.ptype }}</div><div class="w" style="grid-column:1/-1"><span>نشانی: </span>{{ p.address }}</div>
-  </div></div>{% endfor %}
+  <div class="box"><div class="t">{{ lab }}</div><table class="pt">
+    <tr><td colspan="2"><span>نام شخص حقیقی / حقوقی: </span><b>{{ p.name }}</b>{{ ' (' ~ p.code ~ ')' if p.code }}</td>
+      <td><span>کد اقتصادی: </span>{{ p.economic_code or '' }}</td><td><span>شناسه / کد ملی: </span>{{ p.national_id or '' }}</td></tr>
+    <tr><td><span>شماره ثبت: </span>{{ p.reg_no or '' }}</td><td><span>کد پستی: </span>{{ p.postal_code or '' }}</td>
+      <td><span>تلفن: </span><span dir="ltr" style="color:#111">{{ p.phone or '' }}</span></td><td><span>نوع: </span>{{ p.ptype or '' }}</td></tr>
+    <tr><td colspan="4"><span>نشانی: </span>{{ p.address or '' }}</td></tr>
+  </table></div>{% endfor %}
   {% if d.meta %}<div class="box"><div class="meta">{% for k, v in d.meta %}<div><span>{{ k }}: </span><b>{{ v }}</b></div>{% endfor %}</div></div>{% endif %}
   <div class="tw"><table>
     <thead><tr><th>ردیف</th><th>کد کالا</th><th>شرح کالا یا خدمات</th><th>تعداد / مقدار</th><th>واحد</th><th>مبلغ واحد (ریال)</th><th>مبلغ کل (ریال)</th>

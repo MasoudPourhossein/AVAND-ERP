@@ -124,6 +124,13 @@ def receipts():
     rows = q("""SELECT r.*, w.name whname, COALESCE(SUM(l.qty),0) qty, COALESCE(SUM(l.qty*l.unit_cost),0) val, COUNT(l.id) n FROM receipts r
                 JOIN warehouses w ON w.id=r.wh_id LEFT JOIN receipt_lines l ON l.receipt_id=r.id WHERE r.date BETWEEN ? AND ?
                 GROUP BY r.id, w.name ORDER BY r.date DESC, r.no DESC""", (f, t))
+    kinds = {"opening": "موجودی اولیه", "adjust": "انبارگردانی"}
+    x_ = export.list_out("رسیدهای انبار", f"از {f} تا {t}", [("شماره", "text"), ("تاریخ", "text"), ("انبار", "text"), ("نوع", "text"), ("توضیح", "text"),
+                         ("تعداد اقلام", "num"), ("جمع تعداد", "num"), ("ارزش (ریال)", "money")],
+                         [[r["no"], r["date"], r["whname"], kinds.get(r["kind"], "ورود متفرقه"), r["note"] or "", r["n"], r["qty"], r["val"]] for r in rows],
+                         ["جمع", "", "", "", "", sum(r["n"] for r in rows), sum(r["qty"] for r in rows), sum(r["val"] for r in rows)])
+    if x_:
+        return x_
     return render_template("receipts.html", rows=rows, f=f, t=t)
 
 
@@ -274,6 +281,13 @@ def purchases():
         sql += " AND u.supplier_id=?"; a.append(sid)
     rows = q(sql + " ORDER BY u.date DESC, u.no DESC", a)
     sups = q("SELECT id, code, name FROM persons WHERE is_supplier=1 ORDER BY code")
+    R = [[r["no"], "برگشت از خرید" if r["kind"] == "return" else "خرید", r["date"], r["sname"], r["whname"], r["ref_no"] or "", r["qty"],
+          r["net_total"] * r["sg"], r["vat_total"] * r["sg"], r["total"] * r["sg"]] for r in rows]
+    x_ = export.list_out("فاکتورهای خرید", f"از {f} تا {t}", [("شماره", "text"), ("نوع", "text"), ("تاریخ", "text"), ("تامین‌کننده", "text"),
+                         ("انبار", "text"), ("ش. فاکتور تامین‌کننده", "text"), ("تعداد", "num"), ("مبلغ بدون مالیات", "money"), ("مالیات", "money"),
+                         ("جمع (ریال)", "money")], R, ["جمع", "", "", "", "", "", sum(r[6] for r in R), sum(r[7] for r in R), sum(r[8] for r in R), sum(r[9] for r in R)])
+    if x_:
+        return x_
     return render_template("purchases.html", rows=rows, f=f, t=t, sid=sid, sups=sups)
 
 
@@ -402,6 +416,11 @@ TR_LIST = """SELECT t.*, a.name from_name, b.name to_name, (SELECT COALESCE(SUM(
 def transfers():
     f, t = period()
     rows = q(TR_LIST + " WHERE t.date BETWEEN ? AND ? ORDER BY t.date DESC, t.no DESC", (f, t))
+    x_ = export.list_out("حواله‌های بین انبار", f"از {f} تا {t}", [("شماره", "text"), ("تاریخ", "text"), ("از انبار", "text"), ("به انبار", "text"),
+                         ("توضیح", "text"), ("تعداد", "num")], [[r["no"], r["date"], r["from_name"], r["to_name"], r["note"] or "", r["qty"]] for r in rows],
+                         ["جمع", "", "", "", "", sum(r["qty"] for r in rows)])
+    if x_:
+        return x_
     return render_template("transfers.html", rows=rows, f=f, t=t)
 
 

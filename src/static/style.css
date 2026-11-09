@@ -194,3 +194,15 @@ body:not(.p-void) form[action*="/delete"]:not(.keep-del){display:none!important}
 .lines td input{min-width:64px}.lines td.pick input{min-width:90px}
 @media (max-width:640px){.lines-wrap{overflow:visible}}
 input::placeholder{color:#a3adbf}
+
+/* print: clean page, header on reports, footer on every page */
+.print-foot{display:none}
+@media print{
+ @page{size:A4;margin:12mm 10mm 16mm}
+ .print-foot{display:flex!important;position:fixed;bottom:0;left:0;right:0;justify-content:space-between;font-size:9px;color:#64748b;border-top:1px solid #cbd5e1;padding-top:3px;background:#fff}
+ .content{padding-bottom:10mm}
+ table{page-break-inside:auto}tr{page-break-inside:avoid}thead{display:table-header-group}
+ th{background:#1e3a8a!important;color:#fff!important;-webkit-print-color-adjust:exact;print-color-adjust:exact}
+ .kpis .kpi{border:1px solid #cbd5e1!important;border-radius:8px}
+ a{color:inherit;text-decoration:none}
+}

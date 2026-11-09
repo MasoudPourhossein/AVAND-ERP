@@ -88,6 +88,7 @@ def xlsx(spec):
             if kind in NF and val is not None:
                 b.number_format = NF[kind]
         ws.column_dimensions["A"].width = 34; ws.column_dimensions["B"].width = 22
+        sheet_print(ws, spec["title"])
 
     for sec in spec["sections"]:
         ws = sheet(sec.get("title") or spec["title"])
@@ -120,9 +121,8 @@ def xlsx(spec):
         for j, w in enumerate(widths, 1):
             ws.column_dimensions[get_column_letter(j)].width = w
         ws.freeze_panes = ws.cell(r0 + 1, 1)
-        ws.page_setup.orientation = "landscape" if len(cols) > 6 else "portrait"
-        ws.page_setup.fitToWidth = 1; ws.page_setup.fitToHeight = 0
-        ws.sheet_properties.pageSetUpPr.fitToPage = True
+        ws.auto_filter.ref = f"A{r0}:{get_column_letter(len(cols))}{r0 + len(rows)}"
+        sheet_print(ws, spec["title"], r0, len(cols) > 6)
     if not wb.worksheets:
         sheet("گزارش")
     buf = io.BytesIO()
@@ -155,6 +155,32 @@ def doc_pdf(doc):
     if data is None:
         return redirect(request.path)
     return _send(data, _fname(f"{doc['title']}_{doc['no']}", "pdf"), "application/pdf")
+
+
+def list_out(title, sub, cols, rows, total=None):
+    """Excel / PDF of a plain list page (?fmt=xlsx|pdf); None when the page itself is requested"""
+    f = request.args.get("fmt")
+    if f not in ("xlsx", "pdf"):
+        return None
+    spec = {"title": title, "sub": sub, "sections": [{"cols": cols, "rows": rows, "total": total}]}
+    return xlsx(spec) if f == "xlsx" else report_pdf(spec)
+
+
+def sheet_print(ws, title, title_row=None, landscape=False):
+    """page setup, repeating header row, header/footer with page numbers for printing an Excel sheet"""
+    ws.page_setup.paperSize = ws.PAPERSIZE_A4
+    ws.page_setup.orientation = "landscape" if landscape else "portrait"
+    ws.page_setup.fitToWidth = 1; ws.page_setup.fitToHeight = 0
+    ws.sheet_properties.pageSetUpPr.fitToPage = True
+    ws.print_options.horizontalCentered = True
+    ws.page_margins.top = ws.page_margins.bottom = 0.6
+    if title_row:
+        ws.print_title_rows = f"{title_row}:{title_row}"
+    ws.oddHeader.right.text = company(); ws.oddHeader.right.size = 8
+    ws.oddHeader.left.text = title; ws.oddHeader.left.size = 8
+    ws.oddFooter.center.text = "صفحه &P از &N"; ws.oddFooter.center.size = 8
+    ws.oddFooter.right.text = f"تاریخ تهیه: {today_j()}"; ws.oddFooter.right.size = 8
+    ws.oddFooter.left.text = POWERED; ws.oddFooter.left.size = 7
 
 
 def out(spec, template="report.html", **kw):

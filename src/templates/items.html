@@ -1,5 +1,5 @@
-{% extends "base.html" %}{% from "_m.html" import icon %}{% block h %}کالاها{% endblock %}
-{% block body %}
+{% extends "base.html" %}{% from "_m.html" import icon, xbtns %}{% block h %}کالاها{% endblock %}
+{% block body %}<div class="bar no-print" style="justify-content:flex-end;margin-bottom:8px">{{ xbtns() }}</div>
 {% if can("items") %}
 <div class="bar no-print">
   <a class="btn s" href="/items/import">{{ icon('file-spreadsheet') }} ورود گروهی از اکسل</a>

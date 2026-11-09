@@ -522,6 +522,9 @@ def xurl(fmt_):
     return url_for(request.endpoint, **(request.view_args or {}), **a)
 
 
+app.add_template_global(xurl, "xurl")
+
+
 def safe_back(u, default):
     return u if u and u.startswith("/") and not u.startswith("//") else default
 

@@ -1,5 +1,5 @@
-{% extends "base.html" %}{% from "_m.html" import period, vsel, icon %}{% block h %}فاکتورهای امانی{% endblock %}
-{% block body %}
+{% extends "base.html" %}{% from "_m.html" import period, vsel, icon, xbtns %}{% block h %}فاکتورهای امانی{% endblock %}
+{% block body %}<div class="bar no-print" style="justify-content:flex-end;margin-bottom:8px">{{ xbtns() }}</div>
 {% if last %}<div class="card" style="border-color:#a7f3d0;background:var(--ok-s)">
 <b>امانی {{ last.no }} — {{ last.vname }} تسویه شد.</b>
 <div class="bar" style="margin:8px 0 0">

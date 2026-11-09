@@ -126,6 +126,15 @@ def items():
         rows = [r for r in rows if r["supplier_id"] == sup]
     if request.args.get("inactive") != "1":
         rows = [r for r in rows if r["active"]]
+    import export
+    R = [[r["code"], r["name"], r["sup_name"] or "", r["group_name"] or "", r["pack"] or 1, r["cost"], r["price"], (r["cost"] or 0) * (r["pack"] or 1),
+          (r["price"] or 0) * (r["pack"] or 1), pkr(r["st"], r), r["st"], int(r["st"] * (r["cost"] or 0))] for r in rows]
+    x_ = export.list_out("فهرست کالاها و موجودی", "", [("کد", "text"), ("نام کالا", "text"), ("تامین‌کننده", "text"), ("گروه", "text"),
+                         ("باکس در کارتن", "num"), ("نرخ خرید باکس", "money"), ("نرخ فروش باکس", "money"), ("نرخ خرید کارتن", "money"), ("نرخ فروش کارتن", "money"),
+                         ("موجودی", "text"), ("موجودی (باکس)", "num"), ("ارزش موجودی", "money")], R,
+                         ["جمع", "", "", "", "", "", "", "", "", "", sum(r[10] for r in R), sum(r[11] for r in R)])
+    if x_:
+        return x_
     return render_template("items.html", rows=rows, groups=_groups(), whs=warehouses_list(), wh=wh, gid=gid, sups=suppliers(), sup=sup)
 
 
@@ -290,6 +299,8 @@ def _xl(rows, title, extra_cols=(), cols=None):
     for i, c in enumerate(cols, 1):
         ws.column_dimensions[ws.cell(1, i).column_letter].width = widths.get(c, 14)
     ws.freeze_panes = "A2"
+    from export import sheet_print
+    sheet_print(ws, title, 1, True)
     buf = io.BytesIO()
     wb.save(buf)
     buf.seek(0)
@@ -507,6 +518,16 @@ def persons():
         sql += " AND p.visitor_id=?"; args.append(vf)
     rows = q(sql + " ORDER BY p.code LIMIT 1000", args)
     counts = {k: v1(f"SELECT COUNT(*) FROM persons WHERE {c}=1") for k, c in KIND_FLAG.items()}
+    import export
+    from core import PERSON_KINDS as PK_
+    R = [[r["code"], r["name"], "، ".join(lab for k, lab in PK_.items() if r.get("is_" + k)), r["mobile"] or r["phone"] or "", r["vname"] or "",
+          r["national_id"] or "", r["economic_code"] or "", r["address"] or "", r["receivable"] if r["receivable"] > 0 else 0,
+          -r["receivable"] if r["receivable"] < 0 else 0] for r in rows]
+    x_ = export.list_out("فهرست اشخاص", "", [("کد", "text"), ("نام", "text"), ("نوع", "text"), ("تلفن", "text"), ("ویزیتور مسئول", "text"),
+                         ("شناسه / کد ملی", "text"), ("کد اقتصادی", "text"), ("نشانی", "text"), ("بدهکار", "money"), ("بستانکار", "money")], R,
+                         ["جمع", "", "", "", "", "", "", "", sum(r[8] for r in R), sum(r[9] for r in R)])
+    if x_:
+        return x_
     return render_template("persons.html", rows=rows, kind=kind, counts=counts, visitors=visitors_list(), vf=vf)
 
 
