@@ -1,6 +1,5 @@
 """Standard deletion of base data (only when unused, with a list of where it is used)."""
-from flask import render_template, request, redirect, url_for, flash, abort, session
-from werkzeug.security import check_password_hash
+from flask import request, redirect, url_for, flash, abort
 from core import app, q, x, v1, db, to_int, safe_back, del_moves
 import gl
 
@@ -95,33 +94,3 @@ def master_delete(kind, i):
     db().commit()
     flash(f"{label} «{name}» حذف شد.", "ok")
     return redirect(safe_back(request.form.get("after"), url_for(back)) if request.form.get("after") else url_for(back))
-
-
-# ---------------- admin: wipe test data (TEMPORARY — remove after the user's cleanup)
-DOC_TABLES = ["voucher_lines", "vouchers", "cheque_events", "tr_lines", "tr_docs", "cheques", "stock_moves", "sales_lines", "sales_invoices",
-              "cons_lines", "consignments", "transfer_lines", "transfers", "purchase_lines", "purchases", "receipt_lines", "receipts"]
-BASE_TABLES = ["prices", "items", "item_groups", "persons"]
-
-
-@app.route("/system/reset", methods=["GET", "POST"])
-def data_reset():
-    counts = {t: v1(f"SELECT COUNT(*) FROM {t}") for t in DOC_TABLES + BASE_TABLES}
-    if request.method == "POST":
-        F = request.form
-        mode = F.get("mode") if F.get("mode") in ("docs", "all") else "docs"
-        u = q("SELECT * FROM users WHERE id=?", (session.get("uid"),), one=True)
-        if F.get("confirm", "").strip() != "حذف همه" or F.get("ok") != "1":
-            flash("عبارت «حذف همه» را دقیق وارد و تیک تایید را بزنید.", "bad")
-        elif not u or not check_password_hash(u["pw"], F.get("password", "")):
-            flash("رمز عبور درست نیست.", "bad")
-        else:
-            tables = DOC_TABLES + (BASE_TABLES if mode == "all" else [])
-            x("TRUNCATE " + ", ".join(tables) + " RESTART IDENTITY CASCADE")
-            if mode == "all":
-                x("DELETE FROM counters")
-            else:
-                x("DELETE FROM counters WHERE kind NOT LIKE 'PER-%'")
-            db().commit()
-            flash("اسناد آزمایشی پاک شد" + (" و اشخاص، کالاها و گروه‌ها هم حذف شدند." if mode == "all" else "؛ اشخاص و کالاها باقی ماندند."), "ok")
-            return redirect(url_for("dashboard"))
-    return render_template("data_reset.html", counts=counts)

@@ -444,7 +444,7 @@ P(f"/invoices/{iid}/remove", {"step": "2", "action": "delete", "confirm": no_d, 
 assert one(f"SELECT SUM(qty) FROM stock_moves WHERE item_id={k1} AND wh_id={w2}") == 100
 gl_ok()
 assert one(f"SELECT COUNT(*) FROM vouchers WHERE src_type='FCT' AND src_id={iid}") == 0
-G("/system/reset")
+assert cl.get("/system/reset").status_code == 404
 # auto codes: manual form, groups, excel template without codes
 P("/items", {"code": "", "name": "کالای بی‌کد", "unit": "عدد", "pack": 1, "buy": 5, "price": 9, "date": "1405/09/01"})
 ac1 = one("SELECT code FROM items WHERE name='کالای بی‌کد'"); assert ac1.isdigit() and int(ac1) >= 1001
@@ -484,7 +484,7 @@ r = ok(cl.post("/items/import", data={"file": (b3, "e.xlsx"), "date": "1405/09/0
 assert "اصلاح موجودی" in T(r) and one(f"SELECT SUM(qty) FROM stock_moves WHERE item_id={k1} AND wh_id={w1}") == 57, T(r)[:400]
 assert one(f"SELECT price FROM prices WHERE item_id={k1} ORDER BY date DESC, id DESC LIMIT 1") == 200
 # temporary data reset page
-G("/system/reset")
+assert cl.get("/system/reset").status_code == 404
 gl_ok()
 gl_ok()
 # backup / restore
