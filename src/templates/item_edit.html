@@ -37,7 +37,7 @@
 <div class="card"><h3>موجودی به تفکیک انبار</h3><table><tr><th>انبار</th><th>موجودی</th></tr>
 {% for w in by_wh %}<tr><td>{{ w.name }}</td><td>{{ pkr(w.st, it) }}</td></tr>{% endfor %}</table></div>
 <div class="card"><h3>سابقه نرخ</h3><table><tr><th>تاریخ اعمال</th><th class="n">نرخ خرید</th><th class="n">نرخ فروش</th><th class="n">سود واحد</th><th></th></tr>
-{% for h in hist %}<tr><td>{{ h.date }}</td><td class="n">{{ h.buy|m }}</td><td class="n">{{ h.price|m }}</td><td class="n">{{ (h.price-h.buy)|m if h.buy and h.price else '—' }}</td>
+{% for h in hist %}<tr><td>{{ h.date }}</td><td class="n">{{ h.buy|m if h.buy is not none else "—" }}</td><td class="n">{{ h.price|m if h.price is not none else "—" }}</td><td class="n">{{ (h.price-h.buy)|m if h.buy and h.price else '—' }}</td>
 <td>{% if can('items') %}<form method="post" action="/prices/{{ h.id }}/delete" onsubmit="return confirm('حذف شود؟')" class="keep-del"><input type="hidden" name="back" value="/items/{{ it.id }}"><button class="btn sm r">حذف</button></form>{% endif %}</td></tr>
 {% else %}<tr><td colspan="5" class="muted">نرخی ثبت نشده است.</td></tr>{% endfor %}</table></div>
 {% endblock %}

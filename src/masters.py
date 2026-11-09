@@ -105,8 +105,9 @@ def items():
         else:
             iid = x("INSERT INTO items(code,name,group_id,unit,pack,pack_unit,barcode,vat_rate,supplier_id) VALUES(?,?,?,?,?,?,?,?,?)",
                     (code, name, gid, unit, pack, pack_unit, request.form.get("barcode", "").strip() or None, _vat_in(), sid))
-            if price or buy:
-                x("INSERT INTO prices(item_id,date,price,buy) VALUES(?,?,?,?)", (iid, date, price, buy))
+            has_p, has_b = str(request.form.get("price", "")).strip() != "", str(request.form.get("buy", "")).strip() != ""
+            if has_p or has_b:
+                x("INSERT INTO prices(item_id,date,price,buy) VALUES(?,?,?,?)", (iid, date, price if has_p else None, buy if has_b else None))
             msg = f"کالا «{name}» با کد {code} ثبت شد."
             if init_qty > 0:
                 from inventory import make_receipt
@@ -171,14 +172,14 @@ def prices():
     if request.method == "POST":
         iid = to_int(request.form.get("item_id"))
         date = norm_date(request.form.get("date"))
-        price = to_int(request.form.get("price")) if str(request.form.get("price", "")).strip() else (price_at(iid, date) if iid and date else 0)
-        buy = to_int(request.form.get("buy")) if str(request.form.get("buy", "")).strip() else (int(buy_at(iid, date) or 0) if iid and date else 0)
-        if not iid or not date or price < 0 or buy < 0 or (price == 0 and buy == 0):
-            flash("کالا، تاریخ معتبر و حداقل یکی از نرخ خرید یا فروش لازم است.", "bad")
+        price = to_int(request.form.get("price")) if str(request.form.get("price", "")).strip() else None   # empty = unchanged, 0 = free
+        buy = to_int(request.form.get("buy")) if str(request.form.get("buy", "")).strip() else None
+        if not iid or not date or (price or 0) < 0 or (buy or 0) < 0 or (price is None and buy is None):
+            flash("کالا، تاریخ معتبر و حداقل یکی از نرخ خرید یا فروش لازم است (صفر هم مجاز است).", "bad")
         else:
             x("INSERT INTO prices(item_id,date,price,buy) VALUES(?,?,?,?)", (iid, date, price, buy))
             db().commit()
-            msg = f"نرخ ثبت شد: خرید {money(buy)} / فروش {money(price)} ریال"
+            msg = "نرخ ثبت شد:" + (f" خرید {money(buy)}" if buy is not None else "") + (f" فروش {money(price)}" if price is not None else "") + " ریال"
             if buy and price:
                 msg += f" (سود واحد {money(price - buy)} ریال، {round((price - buy) * 100.0 / price, 1)}% از فروش)"
             flash(msg, "ok")

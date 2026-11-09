@@ -215,3 +215,7 @@ ALTER TABLE receipts ADD COLUMN IF NOT EXISTS person_id INT REFERENCES persons(i
 -- v5: moving weighted-average cost
 ALTER TABLE items ADD COLUMN IF NOT EXISTS avg_cost DOUBLE PRECISION NOT NULL DEFAULT 0;
 ALTER TABLE cons_lines ADD COLUMN IF NOT EXISTS cost DOUBLE PRECISION;
+
+-- v5: a price row may set only one of the two prices (NULL = not set here), 0 is a real price
+ALTER TABLE prices ALTER COLUMN price DROP NOT NULL;
+ALTER TABLE prices ALTER COLUMN buy DROP NOT NULL;

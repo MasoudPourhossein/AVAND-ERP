@@ -129,7 +129,7 @@ ACCESS = {
     "invoice_remove": (["users"], ["users"]), "payment_delete": (["void"], ["void"]),
     "users": (["users"], ["users"]), "user_edit": (["users"], ["users"]), "user_delete": (["users"], ["users"]),
     "backup": (["users"], []), "backups": (["users"], ["users"]), "backup_file": (["users"], []),
-    "backup_delete": (["users"], ["users"]), "data_reset": (["users"], ["users"]), "stock_count_page": (["receipt", "rep_stock"], ["receipt"]), "supplier_recode": (["items"], ["items"]), "backup_restore": (["users"], ["users"]), "settings": (["users"], ["users"]),
+    "backup_delete": (["users"], ["users"]), "purchase_template": (["purchase"], []), "data_reset": (["users"], ["users"]), "stock_count_page": (["receipt", "rep_stock"], ["receipt"]), "supplier_recode": (["items"], ["items"]), "backup_restore": (["users"], ["users"]), "settings": (["users"], ["users"]),
     "tr_list": (["treasury", "rep_fin"], []), "tr_new": (["treasury"], ["treasury"]), "tr_view": (["treasury", "rep_fin", "payment"], []),
     "tr_delete": (["void"], ["void"]), "inv_receive": (["payment", "treasury"], ["payment", "treasury"]),
     "cheques": (["treasury", "rep_fin"], []), "cheque_view": (["treasury", "rep_fin"], ["treasury"]),
@@ -318,18 +318,18 @@ def warehouses_list(active_only=True):
 
 
 def price_at(item_id, date):
-    r = q("SELECT price FROM prices WHERE item_id=? AND date<=? AND price>0 ORDER BY date DESC, id DESC LIMIT 1", (item_id, date), one=True)
+    r = q("SELECT price FROM prices WHERE item_id=? AND date<=? AND price IS NOT NULL ORDER BY date DESC, id DESC LIMIT 1", (item_id, date), one=True)
     return r["price"] if r else 0
 
 
 AVG_COST = ("COALESCE((SELECT SUM(qty*cost)/NULLIF(SUM(qty),0) FROM stock_moves WHERE item_id=i.id AND qty>0 AND cost>0 "
             "AND doc_type IN ('RES','PUR')),0)")
-BUY_AT = "(SELECT buy FROM prices WHERE item_id={i} AND date<={d} AND buy>0 ORDER BY date DESC,id DESC LIMIT 1)"
+BUY_AT = "(SELECT buy FROM prices WHERE item_id={i} AND date<={d} AND buy IS NOT NULL ORDER BY date DESC,id DESC LIMIT 1)"
 
 
 def buy_at(item_id, date):
     """purchase price effective at date; fallback: weighted average of receipt/purchase costs"""
-    r = q("SELECT buy FROM prices WHERE item_id=? AND date<=? AND buy>0 ORDER BY date DESC, id DESC LIMIT 1", (item_id, date), one=True)
+    r = q("SELECT buy FROM prices WHERE item_id=? AND date<=? AND buy IS NOT NULL ORDER BY date DESC, id DESC LIMIT 1", (item_id, date), one=True)
     if r:
         return r["buy"]
     return v1("""SELECT SUM(qty*cost)/NULLIF(SUM(qty),0) FROM stock_moves WHERE item_id=? AND qty>0 AND cost>0
@@ -345,7 +345,7 @@ def stock_rows(date=None, wh_id=None):
        COALESCE((SELECT SUM(qty) FROM stock_moves WHERE item_id=i.id {wf}),0) AS st,
        COALESCE((SELECT SUM(cl.qty) FROM cons_lines cl JOIN consignments c ON c.id=cl.cons_id
                  WHERE cl.item_id=i.id AND c.status='open' {wf.replace('wh_id', 'c.wh_id')}),0) AS open_amani,
-       COALESCE((SELECT price FROM prices WHERE item_id=i.id AND date<=? AND price>0 ORDER BY date DESC,id DESC LIMIT 1),0) AS price,
+       COALESCE((SELECT price FROM prices WHERE item_id=i.id AND date<=? AND price IS NOT NULL ORDER BY date DESC,id DESC LIMIT 1),0) AS price,
        COALESCE({BUY_AT.format(i="i.id", d="?")},{AVG_COST}) AS cost,
        COALESCE({BUY_AT.format(i="i.id", d="?")},0) AS buy,
        CASE WHEN i.avg_cost>0 THEN i.avg_cost ELSE COALESCE({BUY_AT.format(i="i.id", d="?")},{AVG_COST}) END AS vc

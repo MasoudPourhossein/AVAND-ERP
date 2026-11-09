@@ -56,11 +56,18 @@
   <div class="bar" style="margin-top:14px">
     <button type="button" class="btn s" onclick="addRow(true)">{{ icon('plus') }} ردیف جدید</button>
     <button type="button" class="btn s" onclick="openItems()">{{ icon('list') }} جستجوی کالا (F1)</button>
+    {% if mode=='purchase' %}<button type="button" class="btn o" onclick="fillSup()">{{ icon('boxes') }} همه کالاهای این تامین‌کننده</button>
+    <button type="button" class="btn s" onclick="supTpl()">{{ icon('file-spreadsheet') }} قالب اکسل خرید</button>
+    <button type="button" class="btn s" onclick="document.getElementById('xupf').style.display='flex'">{{ icon('download') }} ورود از اکسل</button>{% endif %}
     <span class="sp"></span>
     {% if D.id %}<a class="btn s" href="{{ request.referrer or '/' }}">انصراف</a>{% endif %}
     <button class="btn g">{{ 'ذخیره تغییرات' if D.id else 'ثبت ' ~ TITLES[mode].split(' / ')[0] }}</button>
   </div>
 </form>
+{% if mode=='purchase' and not D.id %}<form method="post" action="/purchases/new" enctype="multipart/form-data" id="xupf" class="card bar no-print" style="display:none;gap:8px;align-items:center">
+  <b>ورود فاکتور خرید از اکسل:</b><input type="hidden" name="party_id" id="xpid"><input type="hidden" name="wh_id" id="xwh"><input type="hidden" name="date" id="xdt">
+  <input type="file" name="xfile" accept=".xlsx" required style="max-width:300px"><button class="btn g" onclick="xpid.value=PID.value;xwh.value=document.getElementById('whsel').value;xdt.value=document.querySelector('#frm input[name=date]').value">بارگذاری و نمایش</button>
+  <span class="muted">قالب را با «قالب اکسل خرید» بگیرید، تعداد و نرخ را پر کنید؛ فاکتور برای بازبینی در همین فرم پر می‌شود و بعد ثبت می‌کنید.</span></form>{% endif %}
 <template id="rt"><tr><td class="i"></td><td class="del-td" style="text-align:left"><button type="button" class="btn sm r del" tabindex="-1">×</button></td>
   <td class="pick" data-l="کد کالا"><input class="code" placeholder="کد"><input type="hidden" name="item_id"></td>
   <td class="pick" data-l="نام کالا"><input class="name" placeholder="نام کالا"></td>
@@ -179,6 +186,12 @@ window.F1_HANDLER=function(){if(document.getElementById('gsm').classList.contain
 document.addEventListener('keydown',e=>{if(e.key==='Insert'){e.preventDefault();addRow(true)}});
 // party picker
 const PIN=document.getElementById('pin'),PID=document.getElementById('pid');
+function fillSup(){const s=+PID.value;if(!s){alert('اول تامین‌کننده را انتخاب کنید.');PIN.focus();return}
+  const have=new Set([...rowsEl.querySelectorAll('input[name=item_id]')].map(h=>+h.value).filter(Boolean)),L=IT.filter(x=>x.s===s&&!have.has(x.id));
+  if(!L.length){alert('کالای دیگری برای این تامین‌کننده تعریف نشده است.');return}
+  L.forEach(x=>{let tr=[...rowsEl.querySelectorAll('tr')].find(r=>!r.querySelector('input[name=item_id]').value&&!r.querySelector('.code').value);if(!tr)tr=addRow(false);setItem(tr,x)});
+  addRow(false);calc();rowsEl.querySelector('input[name=ctn]:not([disabled]),input[name=box]').focus()}
+function supTpl(){const s=+PID.value;location.href='/purchases/template.xlsx'+(s?'?supplier='+s:'')}
 function pickParty(x){PID.value=x.id;PIN.value=x.code+' - '+x.name;const vs=document.getElementById('vsel');if(vs&&x.vid&&!vs.value)vs.value=x.vid;const c=rowsEl.querySelector('.code');c&&c.focus()}
 if(PIN){PIN.addEventListener('input',()=>{PID.value='';showList(PIN,match(PS,PIN.value,/^[a-z0-9]/i.test(PIN.value.trim())?'code':'name'),pickParty)});
   PIN.addEventListener('focus',()=>{if(!PIN.value)showList(PIN,PS.slice(0,12),pickParty)});

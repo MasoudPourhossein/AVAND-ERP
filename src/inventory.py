@@ -1,5 +1,6 @@
 """Stock documents: receipts (رسید), purchases (خرید/برگشت از خرید), transfers (حواله بین انبار)."""
-from flask import render_template, request, redirect, url_for, flash, abort
+import io
+from flask import send_file, render_template, request, redirect, url_for, flash, abort
 from core import (app, q, x, v1, db, next_no, to_int, uid, uname, stock_rows, add_moves, del_moves, check_stock, default_wh,
                   warehouses_list, period, money, pkr, DOC, can)
 from jalali import today_j, norm_date
@@ -354,6 +355,14 @@ def _no_negative(doc_type, did):
 
 @app.route("/purchases/new", methods=["GET", "POST"])
 def purchase_new():
+    if request.method == "POST" and request.files.get("xfile"):
+        try:
+            doc, lines = purchase_from_excel(request.files["xfile"])
+            flash(f"{len(lines)} ردیف از اکسل خوانده شد؛ بازبینی کنید و «ثبت» را بزنید.", "ok")
+            return render_template("doc_form.html", **form_ctx("purchase", parties=_suppliers(), doc=doc, init_lines=lines))
+        except ValueError as e:
+            flash(str(e), "bad")
+            return redirect(url_for("purchase_new"))
     if request.method == "POST":
         try:
             no, pid = _save_purchase()
@@ -364,6 +373,68 @@ def purchase_new():
             db().rollback()
             flash(str(e), "bad")
     return render_template("doc_form.html", **form_ctx("purchase", parties=_suppliers()))
+
+
+PX_COLS = ["کد کالا", "نام کالا", "باکس در کارتن", "تعداد کارتن", "تعداد باکس", "نرخ خرید هر باکس", "نرخ خرید هر کارتن", "تخفیف ردیف (ریال)", "مالیات %"]
+
+
+@app.route("/purchases/template.xlsx")
+def purchase_template():
+    """ready purchase sheet: all items of a supplier (or all items) with last purchase prices"""
+    from masters import _xl
+    from core import vat_default
+    sid = to_int(request.args.get("supplier"))
+    rows = [r for r in stock_rows() if r["active"] and (not sid or r["supplier_id"] == sid)]
+    vd = vat_default()
+    data = [[r["code"], r["name"], r["pack"] or 1, None, None, int(r["cost"] or 0), int(r["cost"] or 0) * (r["pack"] or 1) if (r["pack"] or 1) > 1 else None, None,
+             r["vat_rate"] if r["vat_rate"] is not None else vd] for r in rows]
+    name = v1("SELECT name FROM persons WHERE id=?", (sid,)) if sid else "همه"
+    buf = _xl(data, "خرید", cols=PX_COLS)
+    return send_file(buf, as_attachment=True, download_name=f"purchase_{(name or '').replace(' ', '_')}.xlsx",
+                     mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+
+
+def purchase_from_excel(f):
+    """-> (doc, init_lines) for the purchase form (nothing is saved)"""
+    from openpyxl import load_workbook
+    from masters import _cell, pick_price
+    try:
+        ws = load_workbook(io.BytesIO(f.read()), data_only=True).worksheets[0]
+    except Exception:
+        raise ValueError("فایل اکسل معتبر نیست (xlsx).")
+    rows = list(ws.iter_rows(values_only=True))
+    if not rows:
+        raise ValueError("فایل خالی است.")
+    head = [_cell(h) for h in rows[0]]
+    if "کد کالا" not in head:
+        raise ValueError("ستون «کد کالا» لازم است؛ «قالب اکسل خرید» را دانلود کنید.")
+    ix = {c: head.index(c) for c in PX_COLS if c in head}
+    num = lambda r, c: to_int(str(_cell(r[ix[c]])).replace(",", "")) if c in ix and ix[c] < len(r) and _cell(r[ix[c]]) != "" else None
+    items = {r["code"]: r for r in stock_rows()}
+    lines, bad = [], []
+    for n, r in enumerate(rows[1:], 2):
+        code = _cell(r[ix["کد کالا"]]) if ix["کد کالا"] < len(r) else ""
+        if not code:
+            continue
+        it = items.get(code)
+        if not it:
+            bad.append(f"ردیف {n}: کد {code}")
+            continue
+        k = it["pack"] or 1
+        c, b = num(r, "تعداد کارتن") or 0, num(r, "تعداد باکس") or 0
+        if c <= 0 and b <= 0:
+            continue
+        price = pick_price(num(r, "نرخ خرید هر باکس"), num(r, "نرخ خرید هر کارتن"), k, int(it["cost"] or 0))
+        vat = _cell(r[ix["مالیات %"]]) if "مالیات %" in ix and ix["مالیات %"] < len(r) else ""
+        lines.append({"id": it["id"], "ctn": c if k > 1 else "", "box": b + (c * k if k <= 1 else 0) or "", "price": price if price is not None else int(it["cost"] or 0),
+                      "disc": num(r, "تخفیف ردیف (ریال)") or 0, "vat": vat or 0})
+    if bad:
+        raise ValueError("این کدها پیدا نشد: " + "، ".join(bad[:10]))
+    if not lines:
+        raise ValueError("هیچ ردیفی با تعداد پر نشده است.")
+    doc = {"supplier_id": to_int(request.form.get("party_id")) or None, "wh_id": to_int(request.form.get("wh_id")) or None,
+           "date": norm_date(request.form.get("date") or "") or None, "kind": "buy"}
+    return doc, lines
 
 
 @app.route("/purchases/<int:pid>/edit", methods=["GET", "POST"])

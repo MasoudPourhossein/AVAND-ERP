@@ -355,6 +355,26 @@ assert accbal("inventory") != inv0 or cur == 103
 assert "یکی است" in T(P("/stock-count", {"wh": w1, "date": "1405/09/07", "item": [k1], f"c_{k1}": 2, f"b_{k1}": 3}))
 G("/receipts")
 gl_ok()
+# ================= group purchase from a supplier sheet, zero prices
+tp = load_workbook(io.BytesIO(cl.get(f"/purchases/template.xlsx?supplier={sup}").data)).active
+th = [c.value for c in tp[1]]; codes = [tp.cell(r_, 1).value for r_ in range(2, tp.max_row + 1)]
+assert th[0] == "کد کالا" and "K1" in codes and all(one(f"SELECT supplier_id FROM items WHERE code='{c_}'") == sup for c_ in codes)
+xb = Workbook(); xs = xb.active; xs.append(th)
+xs.append(["K1", "", 50, 2, 0, "", 6000, 0, 0]); xs.append(["K2", "", 1, 0, 0, "", "", 0, 0])
+bx = io.BytesIO(); xb.save(bx); bx.seek(0)
+r = T(ok(cl.post("/purchases/new", data={"xfile": (bx, "p.xlsx"), "party_id": sup, "wh_id": w1, "date": "1405/09/09"}, content_type="multipart/form-data"), "pxl"))
+assert "1 ردیف از اکسل" in r and '"ctn": 2' in r and '"price": 120' in r, r[:500]
+xb2 = Workbook(); xs2 = xb2.active; xs2.append(th); xs2.append(["NOPE", "", 1, 1, 0, 1, "", 0, 0]); bx2 = io.BytesIO(); xb2.save(bx2); bx2.seek(0)
+assert "پیدا نشد" in T(ok(cl.post("/purchases/new", data={"xfile": (bx2, "p.xlsx"), "party_id": sup, "wh_id": w1}, content_type="multipart/form-data", follow_redirects=True), "pxl2"))
+np0 = one("SELECT COUNT(*) FROM purchases"); P("/purchases/new", {"date": "1405/09/09", "wh_id": w1, "party_id": sup, "kind": "buy", "item_id": [k1], "ctn": [0], "box": [3], "price": [0], "disc": [0], "vat": [0]})
+assert one("SELECT COUNT(*) FROM purchases") == np0 + 1
+ns0 = one("SELECT COUNT(*) FROM sales_invoices"); P("/sales/new", {"date": "1405/09/09", "wh_id": w1, "party_id": c1, "item_id": [k1], "ctn": [0], "box": [1], "price": [0], "disc": [0], "vat": [0]})
+assert one("SELECT COUNT(*) FROM sales_invoices") == ns0 + 1
+P("/prices", {"item_id": k2, "date": "1405/09/09", "buy": "0", "price": ""})
+with A.app.test_request_context():
+    from core import buy_at as _ba, price_at as _pa
+    assert _ba(k2, "1405/09/09") == 0 and _pa(k2, "1405/09/09") > 0
+G("/prices"); G(f"/items/{k2}"); gl_ok()
 # ================= weighted-average cost & profit (several purchases, several sales)
 P("/items", {"code": "AVG1", "name": "کالای میانگین", "unit": "عدد", "pack": 1, "date": "1405/09/10"}); av = one("SELECT id FROM items WHERE code='AVG1'")
 PF = lambda d, qty, pr, kind="buy": {"date": d, "wh_id": w1, "party_id": sup, "kind": kind, "item_id": [av], "ctn": [0], "box": [qty], "price": [pr], "disc": [0], "vat": [0]}
