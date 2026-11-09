@@ -120,8 +120,8 @@ def post_receipt(rid):
 
 def _cons_cost(cid, date, col):
     total = 0
-    for l in q(f"SELECT item_id, {col} n FROM cons_lines WHERE cons_id=?", (cid,)):
-        total += l["n"] * (buy_at(l["item_id"], date) or 0)
+    for l in q(f"SELECT item_id, {col} n, cost FROM cons_lines WHERE cons_id=?", (cid,)):
+        total += l["n"] * (l["cost"] if l["cost"] is not None else (buy_at(l["item_id"], date) or 0))
     return int(round(total))
 
 

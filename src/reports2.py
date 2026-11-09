@@ -266,7 +266,7 @@ def rep_idle():
     for r in stock_rows():
         if r["st"] <= 0 or (sold.get(r["id"]) and sold[r["id"]]["qty"] > 0):
             continue
-        rows.append([r["code"], link(r["name"], url_for("item_edit", iid=r["id"])), r["group_name"] or "", r["st"], int(r["st"] * (r["cost"] or 0)),
+        rows.append([r["code"], link(r["name"], url_for("item_edit", iid=r["id"])), r["group_name"] or "", r["st"], int(r["st"] * (r["vc"] or 0)),
                      last.get(r["id"], "هرگز"), diff_days(last[r["id"]], t) if r["id"] in last else ""])
     rows.sort(key=lambda r: -r[4])
     spec = {"title": "کالاهای بدون فروش (راکد)", "sub": f"موجودی دارند ولی از {f} تا {t} فروش نداشته‌اند", "filters": ["period"],

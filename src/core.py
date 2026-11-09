@@ -43,9 +43,22 @@ app.wsgi_app = ProxyFix(app.wsgi_app, x_for=1, x_proto=1, x_host=1)
 app.teardown_appcontext(D.close)
 
 
+def _commit():
+    """recompute weighted-average costs of the items touched in this transaction, then commit"""
+    if g.get("_recost"):
+        import costing
+        costing.flush()
+    D.commit()
+
+
+def _rollback():
+    g.pop("_recost", None)
+    D.rollback()
+
+
 class _DBShim:
-    commit = staticmethod(D.commit)
-    rollback = staticmethod(D.rollback)
+    commit = staticmethod(_commit)
+    rollback = staticmethod(_rollback)
 
 
 def db():
@@ -116,7 +129,7 @@ ACCESS = {
     "invoice_remove": (["users"], ["users"]), "payment_delete": (["void"], ["void"]),
     "users": (["users"], ["users"]), "user_edit": (["users"], ["users"]), "user_delete": (["users"], ["users"]),
     "backup": (["users"], []), "backups": (["users"], ["users"]), "backup_file": (["users"], []),
-    "backup_delete": (["users"], ["users"]), "stock_count_page": (["receipt", "rep_stock"], ["receipt"]), "supplier_recode": (["items"], ["items"]), "backup_restore": (["users"], ["users"]), "settings": (["users"], ["users"]),
+    "backup_delete": (["users"], ["users"]), "data_reset": (["users"], ["users"]), "stock_count_page": (["receipt", "rep_stock"], ["receipt"]), "supplier_recode": (["items"], ["items"]), "backup_restore": (["users"], ["users"]), "settings": (["users"], ["users"]),
     "tr_list": (["treasury", "rep_fin"], []), "tr_new": (["treasury"], ["treasury"]), "tr_view": (["treasury", "rep_fin", "payment"], []),
     "tr_delete": (["void"], ["void"]), "inv_receive": (["payment", "treasury"], ["payment", "treasury"]),
     "cheques": (["treasury", "rep_fin"], []), "cheque_view": (["treasury", "rep_fin"], ["treasury"]),
@@ -184,7 +197,7 @@ CHART = [  # code, name, level, parent, nature, sys_key
     ("8204", "کارمزد بانکی", 3, "82", "D", "bank_fee"),
     ("83", "سایر هزینه‌ها", 2, "8", "D", None), ("8301", "کسری و اضافات انبار", 3, "83", "D", "stock_diff"),
 ]
-SCHEMA_VERSION = 3
+SCHEMA_VERSION = 5
 
 
 def init_db():
@@ -227,6 +240,9 @@ def init_db():
             if ver < SCHEMA_VERSION:
                 if ver:
                     import gl
+                    import costing
+                    if ver < 5:
+                        costing.recost_all()
                     gl.repost_all()
                 x("INSERT INTO schema_info(version) VALUES(?)", (SCHEMA_VERSION,))
             # legacy permission names
@@ -331,8 +347,9 @@ def stock_rows(date=None, wh_id=None):
                  WHERE cl.item_id=i.id AND c.status='open' {wf.replace('wh_id', 'c.wh_id')}),0) AS open_amani,
        COALESCE((SELECT price FROM prices WHERE item_id=i.id AND date<=? AND price>0 ORDER BY date DESC,id DESC LIMIT 1),0) AS price,
        COALESCE({BUY_AT.format(i="i.id", d="?")},{AVG_COST}) AS cost,
-       COALESCE({BUY_AT.format(i="i.id", d="?")},0) AS buy
-      FROM items i LEFT JOIN item_groups gr ON gr.id=i.group_id LEFT JOIN persons sp ON sp.id=i.supplier_id ORDER BY i.code""", wa + wa + [date, date, date])
+       COALESCE({BUY_AT.format(i="i.id", d="?")},0) AS buy,
+       CASE WHEN i.avg_cost>0 THEN i.avg_cost ELSE COALESCE({BUY_AT.format(i="i.id", d="?")},{AVG_COST}) END AS vc
+      FROM items i LEFT JOIN item_groups gr ON gr.id=i.group_id LEFT JOIN persons sp ON sp.id=i.supplier_id ORDER BY i.code""", wa + wa + [date, date, date, date])
 
 
 def stock_snapshot(pairs):
@@ -356,6 +373,7 @@ def stock_of(item_id, wh_id):
 
 def add_moves(doc_type, doc_id, doc_no, date, rows):
     """rows: (item_id, wh_id, qty_signed, cost)"""
+    g.setdefault("_recost", set()).update(r[0] for r in rows)
     for item_id, wh_id, qty, cost in rows:
         if qty:
             x("INSERT INTO stock_moves(date,item_id,wh_id,qty,cost,doc_type,doc_id,doc_no) VALUES(?,?,?,?,?,?,?,?)",
@@ -363,6 +381,7 @@ def add_moves(doc_type, doc_id, doc_no, date, rows):
 
 
 def del_moves(doc_type, doc_id):
+    g.setdefault("_recost", set()).update(r["item_id"] for r in q("SELECT DISTINCT item_id FROM stock_moves WHERE doc_type=? AND doc_id=?", (doc_type, doc_id)))
     x("DELETE FROM stock_moves WHERE doc_type=? AND doc_id=?", (doc_type, doc_id))
 
 

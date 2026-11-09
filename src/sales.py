@@ -32,6 +32,8 @@ def sale_lines(iid):
 
 
 def create_invoice(kind, date, customer, visitor, wh, lines, discount=0, note=None, cons_id=None, extra=None, iid=None, cost_date=None, costs=None):
+    from flask import g as _g
+    _g.setdefault("_recost", set()).update(l[0] for l in lines)   # consignment invoices take their cost from the consignment
     """lines: (item_id, qty, price[, disc, vat_rate]). direct -> stock out (FCT); return -> stock in (SRT); consign -> no move.
     iid given = replace an existing invoice's header and lines (number kept)."""
     ex = extra or {}

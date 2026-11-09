@@ -211,3 +211,7 @@ CREATE INDEX IF NOT EXISTS ix_items_supplier ON items(supplier_id);
 -- v4: who is credited for a stock receipt: NULL = capital (opening) or stock difference, 'items' = each item's supplier, 'person' = person_id
 ALTER TABLE receipts ADD COLUMN IF NOT EXISTS credit TEXT;
 ALTER TABLE receipts ADD COLUMN IF NOT EXISTS person_id INT REFERENCES persons(id);
+
+-- v5: moving weighted-average cost
+ALTER TABLE items ADD COLUMN IF NOT EXISTS avg_cost DOUBLE PRECISION NOT NULL DEFAULT 0;
+ALTER TABLE cons_lines ADD COLUMN IF NOT EXISTS cost DOUBLE PRECISION;

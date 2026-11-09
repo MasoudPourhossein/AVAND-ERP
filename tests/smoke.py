@@ -355,6 +355,36 @@ assert accbal("inventory") != inv0 or cur == 103
 assert "یکی است" in T(P("/stock-count", {"wh": w1, "date": "1405/09/07", "item": [k1], f"c_{k1}": 2, f"b_{k1}": 3}))
 G("/receipts")
 gl_ok()
+# ================= weighted-average cost & profit (several purchases, several sales)
+P("/items", {"code": "AVG1", "name": "کالای میانگین", "unit": "عدد", "pack": 1, "date": "1405/09/10"}); av = one("SELECT id FROM items WHERE code='AVG1'")
+PF = lambda d, qty, pr, kind="buy": {"date": d, "wh_id": w1, "party_id": sup, "kind": kind, "item_id": [av], "ctn": [0], "box": [qty], "price": [pr], "disc": [0], "vat": [0]}
+SF = lambda d, qty, pr: {"date": d, "wh_id": w1, "party_id": c1, "item_id": [av], "ctn": [0], "box": [qty], "price": [pr], "disc": [0], "vat": [0]}
+P("/purchases/new", PF("1405/09/10", 10, 100)); p1 = one("SELECT MAX(id) FROM purchases")
+P("/purchases/new", PF("1405/09/11", 10, 200))
+P("/sales/new", SF("1405/09/12", 5, 300)); s1 = one("SELECT MAX(id) FROM sales_invoices")
+P("/purchases/new", PF("1405/09/13", 10, 300))
+P("/sales/new", SF("1405/09/14", 5, 400)); s2 = one("SELECT MAX(id) FROM sales_invoices")
+cg = lambda i: one(f"SELECT SUM(qty*cost) FROM sales_lines WHERE inv_id={i}")
+assert round(cg(s1)) == 750 and round(cg(s2)) == 1050, (cg(s1), cg(s2))
+gcogs = lambda i: one(f"SELECT SUM(vl.debit) FROM voucher_lines vl JOIN vouchers v ON v.id=vl.voucher_id JOIN accounts a ON a.id=vl.account_id WHERE v.src_type='FCT' AND v.src_id={i} AND a.sys_key='cogs'")
+assert gcogs(s1) == 750 and gcogs(s2) == 1050
+r = T(G("/reports/fin/profit?from=1405/09/10&to=1405/09/14&by=item"))
+assert "3,500" in r and "1,800" in r and "1,700" in r, r[:600]
+assert round(one(f"SELECT avg_cost FROM items WHERE id={av}")) == 210
+# back-dated price change of the first purchase -> every later cost follows
+P(f"/purchases/{p1}/edit", PF("1405/09/10", 10, 120))
+assert round(cg(s1)) == 800 and round(cg(s2)) == 1080 and gcogs(s1) == 800 and gcogs(s2) == 1080, (cg(s1), cg(s2))
+assert "1,620" in T(G("/reports/fin/profit?from=1405/09/10&to=1405/09/14&by=invoice"))
+# return of 2 from the second sale comes back at its sale cost; stock value stays consistent with the ledger
+P(f"/sales/return/new?of={s2}", {"date": "1405/09/15", "wh_id": w1, "party_id": c1, "ret_of_no": one(f"SELECT no FROM sales_invoices WHERE id={s2}"),
+                                  "item_id": [av], "ctn": [0], "box": [2], "price": [400], "disc": [0], "vat": [0]})
+rr2 = one("SELECT MAX(id) FROM sales_invoices WHERE kind='return'")
+assert round(one(f"SELECT cost FROM sales_lines WHERE inv_id={rr2}")) == 216
+for by in ("invoice", "item", "customer", "visitor", "group", "supplier", "month", "day"):
+    G(f"/reports/fin/profit?from=1405/01/01&to=1405/12/29&by={by}")
+G(f"/reports/fin/profit?customer={c1}"); assert cl.get("/reports/fin/profit?by=month&fmt=pdf").status_code == 200
+P("/vouchers/repost", {}); assert round(cg(s2)) == 1080 and gcogs(s2) == 1080
+gl_ok()
 print("V4 OK")
 # ================= deletion of base data
 assert "استفاده شده" in T(P(f"/delete/person/{c1}", {})) and one(f"SELECT COUNT(*) FROM persons WHERE id={c1}") == 1
@@ -393,7 +423,7 @@ P(f"/invoices/{iid}/remove", {"step": "2", "action": "delete", "confirm": no_d, 
 assert one(f"SELECT SUM(qty) FROM stock_moves WHERE item_id={k1} AND wh_id={w2}") == 100
 gl_ok()
 assert one(f"SELECT COUNT(*) FROM vouchers WHERE src_type='FCT' AND src_id={iid}") == 0
-assert cl.get("/system/reset").status_code == 404
+G("/system/reset")
 # auto codes: manual form, groups, excel template without codes
 P("/items", {"code": "", "name": "کالای بی‌کد", "unit": "عدد", "pack": 1, "buy": 5, "price": 9, "date": "1405/09/01"})
 ac1 = one("SELECT code FROM items WHERE name='کالای بی‌کد'"); assert ac1.isdigit() and int(ac1) >= 1001
@@ -433,7 +463,7 @@ r = ok(cl.post("/items/import", data={"file": (b3, "e.xlsx"), "date": "1405/09/0
 assert "اصلاح موجودی" in T(r) and one(f"SELECT SUM(qty) FROM stock_moves WHERE item_id={k1} AND wh_id={w1}") == 57, T(r)[:400]
 assert one(f"SELECT price FROM prices WHERE item_id={k1} ORDER BY date DESC, id DESC LIMIT 1") == 200
 # temporary data reset page
-assert cl.get("/system/reset").status_code == 404
+G("/system/reset")
 gl_ok()
 gl_ok()
 # backup / restore

@@ -108,6 +108,8 @@ def main(path, force=False):
         x("""INSERT INTO counters(kind,last) SELECT 'TRD', COALESCE(MAX(no),1000) FROM tr_docs
              ON CONFLICT(kind) DO UPDATE SET last=GREATEST(counters.last, excluded.last)""")
         import gl
+        import costing
+        costing.recost_all()
         nd = gl.repost_all()
         for t in TABLE_SEQ:
             D.conn().exec_driver_sql(f"SELECT setval(pg_get_serial_sequence('{t}','id'), COALESCE((SELECT MAX(id) FROM {t}),0)+1, false)")

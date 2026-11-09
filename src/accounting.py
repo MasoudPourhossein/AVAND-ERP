@@ -151,6 +151,8 @@ def voucher_delete(vid):
 
 @app.post("/vouchers/repost")
 def repost():
+    import costing
+    costing.recost_all()
     n = gl.repost_all()
     db().commit()
     flash(f"اسناد خودکار حسابداری از روی {n} سند عملیاتی بازسازی شد.", "ok")

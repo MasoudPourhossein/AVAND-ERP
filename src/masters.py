@@ -128,7 +128,7 @@ def items():
         rows = [r for r in rows if r["active"]]
     import export
     R = [[r["code"], r["name"], r["sup_name"] or "", r["group_name"] or "", r["pack"] or 1, r["cost"], r["price"], (r["cost"] or 0) * (r["pack"] or 1),
-          (r["price"] or 0) * (r["pack"] or 1), pkr(r["st"], r), r["st"], int(r["st"] * (r["cost"] or 0))] for r in rows]
+          (r["price"] or 0) * (r["pack"] or 1), pkr(r["st"], r), r["st"], int(r["st"] * (r["vc"] or 0))] for r in rows]
     x_ = export.list_out("فهرست کالاها و موجودی", "", [("کد", "text"), ("نام کالا", "text"), ("تامین‌کننده", "text"), ("گروه", "text"),
                          ("باکس در کارتن", "num"), ("نرخ خرید باکس", "money"), ("نرخ فروش باکس", "money"), ("نرخ خرید کارتن", "money"), ("نرخ فروش کارتن", "money"),
                          ("موجودی", "text"), ("موجودی (باکس)", "num"), ("ارزش موجودی", "money")], R,

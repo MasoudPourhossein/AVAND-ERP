@@ -128,7 +128,7 @@ def dashboard():
         ctx["k"]["coll_today"] = sales_agg(t, t)["coll"]
     if can("rep_stock"):
         st = stock_rows()
-        ctx["k"]["stock_val"] = sum(r["st"] * r["cost"] for r in st)
+        ctx["k"]["stock_val"] = sum(r["st"] * r["vc"] for r in st)
         ctx["k"]["open_qty"] = sum(r["open_amani"] for r in st)
         ctx["low"] = [r for r in st if r["st"] <= 0 and r["active"]]
         ctx["live"] = [{"code": r["code"], "name": r["name"], "id": r["id"], "s": r["st"], "a": r["open_amani"], "row": r} for r in st if r["active"]]
@@ -334,16 +334,16 @@ def rep_stock():
         s = r["st"]
         if not r["active"] and not s:
             continue
-        vals = [s, r["open_amani"], s + r["open_amani"], s * r["cost"], r["open_amani"] * r["cost"], s * r["price"]]
+        vals = [s, r["open_amani"], s + r["open_amani"], s * r["vc"], r["open_amani"] * r["vc"], s * r["price"]]
         T = [a + b for a, b in zip(T, vals)]
         rows.append([r["code"], link(r["name"], url_for("rep_kardex", item=r["id"], wh=wid or "")), r["group_name"] or "", s, pkr(s, r), r["open_amani"],
-                     pkr(r["open_amani"], r), s + r["open_amani"], r["cost"], r["price"], vals[3], vals[4], vals[5]])
+                     pkr(r["open_amani"], r), s + r["open_amani"], r["vc"], r["price"], vals[3], vals[4], vals[5]])
     spec = {"title": "موجودی و ارزش انبار", "sub": f"تاریخ {today_j()}" + (f" | انبار: {_whname(wid)}" if wid else " | همه انبارها"), "filters": ["wh"],
             "kpis": [("موجودی انبار (واحد)", T[0], "num"), ("امانی نزد ویزیتورها (واحد)", T[1], "num"),
-                     ("ارزش انبار به بهای خرید", T[3], "money"), ("ارزش امانی به بهای خرید", T[4], "money"), ("ارزش انبار به نرخ فروش", T[5], "money")],
+                     ("ارزش انبار (میانگین موزون)", T[3], "money"), ("ارزش امانی (میانگین موزون)", T[4], "money"), ("ارزش انبار به نرخ فروش", T[5], "money")],
             "sections": [{"cols": [("کد", "text"), ("کالا", "text"), ("گروه", "text"), ("موجودی انبار", "num"), ("انبار (کارتن)", "text"),
-                                   ("امانی نزد ویزیتور", "num"), ("امانی (کارتن)", "text"), ("جمع موجودی", "num"), ("نرخ خرید واحد", "money"),
-                                   ("نرخ فروش واحد", "money"), ("ارزش انبار (بهای خرید)", "money"), ("ارزش امانی (بهای خرید)", "money"), ("ارزش انبار (نرخ فروش)", "money")],
+                                   ("امانی نزد ویزیتور", "num"), ("امانی (کارتن)", "text"), ("جمع موجودی", "num"), ("بهای واحد (میانگین موزون)", "money"),
+                                   ("نرخ فروش واحد", "money"), ("ارزش انبار (میانگین موزون)", "money"), ("ارزش امانی (میانگین موزون)", "money"), ("ارزش انبار (نرخ فروش)", "money")],
                           "rows": rows, "total": ["جمع", "", "", T[0], "", T[1], "", T[2], "", "", T[3], T[4], T[5]]}]}
     return export.out(spec, whs=warehouses_list(False))
 
@@ -472,8 +472,8 @@ def fin_summary():
     f, t = period()
     s = sales_agg(f, t)
     st = stock_rows()
-    inv_cost = sum(r["st"] * r["cost"] for r in st)
-    amani_cost = sum(r["open_amani"] * r["cost"] for r in st)
+    inv_cost = sum(r["st"] * r["vc"] for r in st)
+    amani_cost = sum(r["open_amani"] * r["vc"] for r in st)
     r0, r1 = receivable_until(f, before=True), receivable_until(t)
     p0, p1 = payable_until(f, before=True), payable_until(t)
     purchases = v1("SELECT SUM(total*sg) FROM v_pu WHERE date BETWEEN ? AND ?", (f, t))
@@ -681,30 +681,64 @@ def fin_daily():
 
 @rep("/reports/fin/profit", "fin_profit", "rep_fin")
 def fin_profit():
-    f, t = period()
+    """سود و زیان فروش با بهای تمام‌شده میانگین موزون: به تفکیک فاکتور، کالا، مشتری، ویزیتور، گروه، تامین‌کننده، ماه، روز"""
+    import gl
+    f, t = period(default_from=year_start(today_j()))
+    BY = {"invoice": ("فاکتور", "s.no::text", "s.date || ' — ' || c.name", "JOIN persons c ON c.id=s.customer_id", "MIN(s.date), MIN(s.no)"),
+          "item": ("کالا", "i.code", "i.name", "JOIN items i ON i.id=l.item_id", "sales DESC"),
+          "customer": ("مشتری", "c.code", "c.name", "JOIN persons c ON c.id=s.customer_id", "sales DESC"),
+          "visitor": ("ویزیتور", "COALESCE(v.code,'-')", "COALESCE(v.name,'بدون ویزیتور')", "LEFT JOIN persons v ON v.id=s.visitor_id", "sales DESC"),
+          "group": ("گروه کالا", "COALESCE(gr.code,'-')", "COALESCE(gr.name,'بدون گروه')", "JOIN items i ON i.id=l.item_id LEFT JOIN item_groups gr ON gr.id=i.group_id", "sales DESC"),
+          "supplier": ("تامین‌کننده کالا", "COALESCE(sp.code,'-')", "COALESCE(sp.name,'بدون تامین‌کننده')", "JOIN items i ON i.id=l.item_id LEFT JOIN persons sp ON sp.id=i.supplier_id", "sales DESC"),
+          "month": ("ماه", "SUBSTRING(s.date,1,7)", "SUBSTRING(s.date,1,7)", "", "1"),
+          "day": ("روز", "s.date", "s.date", "", "1")}
+    by = request.args.get("by") if request.args.get("by") in BY else "item"
+    lab, kx, nx, join, order = BY[by]
+    vid, cid = to_int(request.args.get("visitor")), to_int(request.args.get("customer"))
+    w, a = " WHERE s.date BETWEEN ? AND ?", [f, t]
+    if vid:
+        w += " AND s.visitor_id=?"; a.append(vid)
+    if cid:
+        w += " AND s.customer_id=?"; a.append(cid)
+    # line amount after its share of the invoice's final discount, without VAT
+    net = "(l.qty*l.price-l.disc) * COALESCE(1 - s.discount::float / NULLIF(s.gross-s.ldisc,0), 1)"
+    rows = q(f"""SELECT {kx} k, {nx} n, MIN(s.id) sid, COUNT(DISTINCT s.id) FILTER (WHERE s.kind<>'return') ninv, SUM(l.qty*s.sg) qty,
+                 SUM({net}*s.sg) sales, SUM(l.qty*l.cost*s.sg) cogs {SL} {join} {w} GROUP BY 1, 2 ORDER BY {order}""", a)
+    S, C = sum(r["sales"] for r in rows), sum(r["cogs"] for r in rows)
+    P_ = S - C
+    exp = -v1("""SELECT SUM(vl.credit-vl.debit) FROM voucher_lines vl JOIN vouchers v ON v.id=vl.voucher_id JOIN accounts ac ON ac.id=vl.account_id
+                 WHERE ac.code LIKE '8%' AND v.date BETWEEN ? AND ?""", (f, t)) if not (vid or cid) else 0
 
-    def grp(key_sql, name_sql, join=""):
-        return q(f"""SELECT {key_sql} k, {name_sql} n, SUM(l.qty*s.sg) qty, SUM((l.qty*l.price-l.disc)*s.sg) sales, SUM(l.qty*l.cost*s.sg) cogs
-                     {SL} {join} WHERE s.date BETWEEN ? AND ? GROUP BY 1, 2 ORDER BY sales DESC""", (f, t))
-    by_item = grp("i.code", "i.name", "JOIN items i ON i.id=l.item_id")
-    by_v = grp("COALESCE(v.code,'-')", "COALESCE(v.name,'بدون ویزیتور')", "LEFT JOIN persons v ON v.id=s.visitor_id")
-    by_c = grp("c.code", "c.name", "JOIN persons c ON c.id=s.customer_id")
-    disc = v1("SELECT SUM(discount*sg) FROM v_si WHERE date BETWEEN ? AND ?", (f, t))
-
-    def mg(s, c):
-        return f"{round((s - c) * 100.0 / s, 1)}%" if s else "—"
-    S, C = sum(r["sales"] for r in by_item), sum(r["cogs"] for r in by_item)
-
-    def sec(title, lab, R):
-        return {"title": title, "cols": [("کد", "text"), (lab, "text"), ("تعداد فروش", "num"), ("فروش", "money"), ("بهای تمام‌شده", "money"),
-                                        ("سود ناخالص", "money"), ("حاشیه سود", "text")],
-                "rows": [[r["k"], r["n"], r["qty"], r["sales"], r["cogs"], r["sales"] - r["cogs"], mg(r["sales"], r["cogs"])] for r in R],
-                "total": ["جمع", "", sum(r["qty"] for r in R), S, C, S - C, mg(S, C)]}
-    spec = {"title": "سود ناخالص فروش", "sub": f"از {f} تا {t}", "filters": ["period"],
-            "kpis": [("فروش (پس از تخفیف ردیف، بدون مالیات)", S, "money"), ("تخفیف نهایی فاکتورها", disc, "money"), ("بهای تمام‌شده", C, "money"), ("سود ناخالص (پس از تخفیف)", S - disc - C, "money")],
-            "sections": [sec("به تفکیک کالا", "کالا", by_item), sec("به تفکیک ویزیتور", "ویزیتور", by_v), sec("به تفکیک مشتری", "مشتری", by_c)],
-            "note": "سود ناخالص = مبلغ فروش − (تعداد فروش × نرخ خرید کالا در تاریخ فاکتور). تخفیف کل فاکتورها در جمع نهایی کسر شده است."}
-    return export.out(spec)
+    def mg(s_, c_):
+        return round((s_ - c_) * 100.0 / s_, 1) if s_ else None
+    cum, data = 0, []
+    for r in rows:
+        p = r["sales"] - r["cogs"]
+        cum += p
+        name = link(r["n"], url_for("invoice", iid=r["sid"])) if by == "invoice" else r["n"]
+        row = [r["k"], name, r["ninv"], r["qty"], r["sales"], r["cogs"], p, mg(r["sales"], r["cogs"]), round(p * 100.0 / P_, 1) if P_ else None]
+        if by in ("month", "day", "invoice"):
+            row.append(cum)
+        data.append(row)
+    cols = [("کد" if by not in ("month", "day") else lab, "text"), (lab if by not in ("month", "day") else "", "text"), ("تعداد فاکتور", "num"),
+            ("تعداد فروش (باکس)", "num"), ("فروش خالص (بدون مالیات)", "money"), ("بهای تمام‌شده (میانگین موزون)", "money"), ("سود ناخالص", "money"),
+            ("حاشیه سود %", "pct"), ("سهم از سود %", "pct")] + ([("سود تجمعی", "money")] if by in ("month", "day", "invoice") else [])
+    total = ["جمع", "", sum(r["ninv"] for r in rows), sum(r["qty"] for r in rows), S, C, P_, mg(S, C), 100.0 if P_ else None] + ([P_] if by in ("month", "day", "invoice") else [])
+    charts = []
+    if by in ("month", "day") and rows:
+        charts = [{"id": "pf", "type": "bar", "title": "فروش و سود", "labels": [r["k"] for r in rows],
+                   "sets": [("فروش خالص", [r["sales"] for r in rows]), ("سود ناخالص", [r["sales"] - r["cogs"] for r in rows])]}]
+    kp = [("فروش خالص", S, "money"), ("بهای تمام‌شده", C, "money"), ("سود ناخالص", P_, "money"), ("حاشیه سود", mg(S, C), "pct")]
+    if not (vid or cid):
+        kp = kp[:3] + [("هزینه‌ها (دفتر کل)", exp, "money"), ("سود خالص", P_ - exp, "money")]
+    spec = {"title": f"سود و زیان فروش — به تفکیک {lab}", "sub": f"از {f} تا {t}" + (f" | ویزیتور: {_pname(vid)}" if vid else "") + (f" | مشتری: {_pname(cid)}" if cid else ""),
+            "filters": ["period", "visitor", "customer"],
+            "selects": [("by", [(k, "به تفکیک " + v[0]) for k, v in BY.items()], by)],
+            "kpis": kp, "charts": charts,
+            "sections": [{"cols": cols, "rows": data, "total": total}],
+            "note": "بهای تمام‌شده هر فروش = میانگین موزون متحرک خرید کالا در لحظه فروش (همه خریدها و برگشت‌ها به ترتیب تاریخ). "
+                    "فروش خالص = مبلغ پس از تخفیف ردیف و سهم تخفیف نهایی فاکتور، بدون مالیات؛ برگشت از فروش کسر شده است."}
+    return export.out(spec, visitors=_visitors(), customers=_customers())
 
 
 @rep("/reports/fin/payments", "fin_payments", "rep_fin")
