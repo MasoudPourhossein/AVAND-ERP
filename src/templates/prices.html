@@ -22,9 +22,12 @@
 <div><label>تاریخ اعمال</label><input name="date" value="{{ today }}"></div>
 <div><button class="btn o">اعمال تغییر</button></div></form>
 <p class="note">ویرایش گروهی نام، گروه و نرخ‌ها با اکسل هم ممکن است: «خروجی اکسل» را در صفحه کالاها بگیرید، ویرایش کنید و در «ورود گروهی از اکسل» بارگذاری کنید.</p></div>
-<div class="card"><h3>نرخ فعلی کالاها</h3><table><tr><th>کد</th><th>کالا</th><th class="n">نرخ خرید</th><th class="n">نرخ فروش</th><th class="n">سود واحد</th><th class="n">درصد سود</th></tr>
-{% for i in items %}<tr><td>{{ i.code }}</td><td><a href="/items/{{ i.id }}">{{ i.name }}</a></td><td class="n">{{ i.buy|m }}</td><td class="n">{{ i.price|m }}</td>
-<td class="n">{{ (i.price-i.buy)|m if i.buy and i.price else '—' }}</td><td class="n">{{ ((i.price-i.buy)*100/i.price)|round(1) ~ '%' if i.buy and i.price else '—' }}</td></tr>{% endfor %}</table></div>
+<div class="card"><h3>نرخ فعلی و سود هر کالا</h3>
+<p class="note">سود واحد = نرخ فروش − بهای تمام‌شده (میانگین موزون خریدها). «آخرین نرخ خرید» از جدیدترین فاکتور خرید یا لیست نرخ می‌آید؛ منبع آن کنارش نوشته شده است.</p>
+<div class="tw"><table><tr><th>کد</th><th>کالا</th><th class="n">آخرین نرخ خرید</th><th>منبع نرخ خرید</th><th class="n">بهای تمام‌شده (میانگین موزون)</th><th class="n">نرخ فروش</th><th class="n">سود واحد</th><th class="n">درصد سود</th></tr>
+{% for i in items %}{% set pr = (i.price - i.vc)|round|int %}<tr><td>{{ i.code }}</td><td><a href="/items/{{ i.id }}">{{ i.name }}</a></td><td class="n">{{ i.buy|round|int|m }}</td>
+<td style="font-size:12px">{{ i.buy_src or '—' }}</td><td class="n">{{ i.vc|round|int|m }}</td><td class="n">{{ i.price|m }}</td>
+<td class="n {{ 'neg' if pr < 0 }}">{{ pr|m if i.price else '—' }}</td><td class="n">{{ ((pr * 100 / i.price)|round(1) ~ '%') if i.price else '—' }}</td></tr>{% endfor %}</table></div></div>
 <div class="card"><h3>آخرین تغییرات نرخ</h3><table><tr><th>تاریخ اعمال</th><th>کد</th><th>کالا</th><th class="n">نرخ خرید</th><th class="n">نرخ فروش</th><th></th></tr>
 {% for r in rows %}<tr><td>{{ r.date }}</td><td>{{ r.code }}</td><td>{{ r.name }}</td><td class="n">{{ r.buy|m if r.buy is not none else "—" }}</td><td class="n">{{ r.price|m if r.price is not none else "—" }}</td>
 <td><form method="post" action="/prices/{{ r.id }}/delete" onsubmit="return confirm('حذف شود؟')" class="keep-del"><button class="btn sm r">حذف</button></form></td></tr>{% endfor %}</table></div>

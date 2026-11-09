@@ -3,7 +3,7 @@
 <div class="grid g4 kpis mb">
   <div class="kpi" style="--c:#0891b2"><span>نرخ خرید هر {{ it.unit }}</span><b>{{ buy|m }}</b>{% if it.pack>1 %}<small>هر {{ it.pack_unit }}: {{ (buy*it.pack)|m }}</small>{% endif %}</div>
   <div class="kpi" style="--c:#4f46e5"><span>نرخ فروش هر {{ it.unit }}</span><b>{{ price|m }}</b>{% if it.pack>1 %}<small>هر {{ it.pack_unit }}: {{ (price*it.pack)|m }}</small>{% endif %}</div>
-  <div class="kpi" style="--c:#059669"><span>سود هر واحد</span><b>{% if buy and price %}{{ (price-buy)|m }} <small>({{ ((price-buy)*100/price)|round(1) }}%)</small>{% else %}—{% endif %}</b></div>
+  <div class="kpi" style="--c:#059669"><span>سود هر واحد (فروش − میانگین موزون {{ row.vc|round|int|m }})</span><b>{% if price %}{{ (price-row.vc)|round|int|m }} <small>({{ ((price-row.vc)*100/price)|round(1) }}%)</small>{% else %}—{% endif %}</b><small>آخرین نرخ خرید: {{ row.buy_src or '—' }}</small></div>
   <div class="kpi" style="--c:#ca8a04"><span>موجودی کل انبارها</span><b style="font-size:15px">{{ pkr(stock, it) }}</b><small>امانی: {{ pkr(row.open_amani, it) }}</small></div>
 </div>
 <div class="grid g2">

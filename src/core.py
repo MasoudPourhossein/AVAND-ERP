@@ -324,6 +324,10 @@ def price_at(item_id, date):
 
 AVG_COST = ("COALESCE((SELECT SUM(qty*cost)/NULLIF(SUM(qty),0) FROM stock_moves WHERE item_id=i.id AND qty>0 AND cost>0 "
             "AND doc_type IN ('RES','PUR')),0)")
+# where the last purchase price comes from (shown next to it)
+BUY_SRC = ("(SELECT z.t FROM (SELECT date d, 1 s, id n, 'لیست نرخ ' || date t FROM prices WHERE item_id={i} AND date<={d} AND buy IS NOT NULL"
+           " UNION ALL SELECT u.date, 2, l.id, 'فاکتور خرید ' || u.no || ' — ' || u.date FROM purchase_lines l JOIN purchases u ON u.id=l.pur_id"
+           " WHERE l.item_id={i} AND u.kind='buy' AND u.date<={d} AND l.qty>0) z ORDER BY z.d DESC, z.s DESC, z.n DESC LIMIT 1)")
 # last purchase price at a date: the newest of a price-list row and a purchase invoice line (net of line discount)
 BUY_AT = ("(SELECT z.b FROM (SELECT date d, 1 s, id n, buy::float b FROM prices WHERE item_id={i} AND date<={d} AND buy IS NOT NULL"
           " UNION ALL SELECT u.date, 2, l.id, (l.qty*l.price-l.disc)::float/NULLIF(l.qty,0) FROM purchase_lines l JOIN purchases u ON u.id=l.pur_id"
@@ -351,8 +355,9 @@ def stock_rows(date=None, wh_id=None):
        COALESCE((SELECT price FROM prices WHERE item_id=i.id AND date<=? AND price IS NOT NULL ORDER BY date DESC,id DESC LIMIT 1),0) AS price,
        COALESCE({BUY_AT.format(i="i.id", d="?")},{AVG_COST}) AS cost,
        COALESCE({BUY_AT.format(i="i.id", d="?")},0) AS buy,
-       CASE WHEN i.avg_cost>0 THEN i.avg_cost ELSE COALESCE({BUY_AT.format(i="i.id", d="?")},{AVG_COST}) END AS vc
-      FROM items i LEFT JOIN item_groups gr ON gr.id=i.group_id LEFT JOIN persons sp ON sp.id=i.supplier_id ORDER BY i.code""", wa + wa + [date] + [date, date] * 3)
+       CASE WHEN i.avg_cost>0 THEN i.avg_cost ELSE COALESCE({BUY_AT.format(i="i.id", d="?")},{AVG_COST}) END AS vc,
+       {BUY_SRC.format(i="i.id", d="?")} AS buy_src
+      FROM items i LEFT JOIN item_groups gr ON gr.id=i.group_id LEFT JOIN persons sp ON sp.id=i.supplier_id ORDER BY i.code""", wa + wa + [date] + [date, date] * 4)
 
 
 def stock_snapshot(pairs):
