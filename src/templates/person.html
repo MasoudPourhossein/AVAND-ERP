@@ -25,7 +25,7 @@
 {% if invs %}<div class="card" style="grid-column:1/-1"><h3>{{ icon('file-check') }} آخرین فاکتورهای فروش</h3>
 <table><tr><th>فاکتور</th><th>تاریخ</th><th>مشتری</th><th>ویزیتور</th><th class="n">مبلغ</th><th class="n">مانده</th></tr>
 {% for c in invs %}<tr><td><a href="/invoices/{{ c.id }}">{{ c.no }}</a></td><td>{{ c.date }}</td><td>{{ c.cname }}</td><td>{{ c.vname or '' }}</td>
-<td class="n">{{ c.total|m }}</td><td class="n {{ 'neg' if c.total-c.paid>0 }}">{{ (c.total-c.paid)|m }}</td></tr>{% endfor %}</table></div>{% endif %}
+<td class="n">{{ c.total|m }}</td><td class="n {{ 'neg' if c.rem>0 }}">{{ c.rem|m }}</td></tr>{% endfor %}</table></div>{% endif %}
 {% if custs %}<div class="card"><h3>{{ icon('users') }} مشتریان این ویزیتور</h3><table><tr><th>کد</th><th>نام</th><th>موبایل</th><th class="n">مانده</th></tr>
 {% for u in custs %}<tr><td>{{ u.code }}</td><td><a href="/persons/{{ u.id }}">{{ u.name }}</a></td><td dir="ltr" style="text-align:right">{{ u.mobile or '' }}</td><td class="n">{{ u.receivable|m }}</td></tr>{% endfor %}</table></div>{% endif %}
 {% if cons %}<div class="card"><h3>{{ icon('hourglass') }} امانی‌ها</h3><table><tr><th>امانی</th><th>تاریخ</th><th>وضعیت</th><th class="n">ارزش</th></tr>

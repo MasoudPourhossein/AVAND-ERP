@@ -1,6 +1,6 @@
 {% extends "base.html" %}{% from "_m.html" import icon %}{% block h %}{{ 'برگشت از فروش' if c.kind=='return' else 'فاکتور فروش' }} {{ c.no }} - {{ c.cname }}{% endblock %}
 {% block body %}
-{% set s=inv_status(c) %}{% set diff=c.total-c.paid %}
+{% set s=inv_status(c) %}{% set diff=c.rem %}
 <div class="grid g4 kpis mb">
  <div class="kpi" style="--c:#4f46e5"><span>مبلغ قابل پرداخت</span><b>{{ c.total|m }}</b><small>تخفیف: {{ (c.ldisc + c.discount)|m }} • مالیات: {{ c.vat_total|m }}</small></div>
  <div class="kpi" style="--c:#0891b2"><span>پوز و بانک</span><b>{{ (c.pos + c.bank)|m }}</b></div>
@@ -10,6 +10,8 @@
 <div class="bar"><a class="btn" href="/print/invoice/{{ c.id }}">{{ icon('printer') }} چاپ فاکتور رسمی</a><a class="btn s" href="/print/invoice/{{ c.id }}?fmt=pdf">PDF</a>
 {% if can('void') and c.kind != 'consign' %}<a class="btn s" href="/sales/{{ c.id }}/edit">ویرایش</a>{% endif %}
 {% if can('sale') and c.kind != 'return' %}<a class="btn o" href="/sales/return/new?of={{ c.id }}">{{ icon('undo-2') }} برگشت از فروش</a>{% endif %}
+{% if c.kind == 'return' and can('treasury') %}<a class="btn o" href="/treasury/new/pay?person={{ c.customer_id }}">{{ icon('wallet') }} استرداد وجه به مشتری</a>{% endif %}
+{% if c.ret_of %}<a class="btn s" href="/invoices/{{ c.ret_of }}">فاکتور مرجع {{ c.ret_of_no }}</a>{% endif %}
 {% if c.ret_of %}<a class="btn s" href="/invoices/{{ c.ret_of }}">فاکتور مرجع {{ c.ret_of_no }}</a>{% endif %}
 {% if c.cons_id %}<a class="btn s" href="/amani/{{ c.cons_id }}">امانی {{ c.cons_no }}</a>{% if c.return_no %}<a class="btn s" href="/print/return/{{ c.cons_id }}">مرجوعی {{ c.return_no }}</a>{% endif %}{% endif %}
 <a class="btn s" href="/persons/{{ c.customer_id }}">مشتری: {{ c.cname }}</a>{% if c.visitor_id %}<a class="btn s" href="/persons/{{ c.visitor_id }}">ویزیتور: {{ c.vname }}</a>{% endif %}

@@ -439,8 +439,8 @@ def api_open_invoices():
     pid = to_int(request.args.get("person"))
     out = []
     for r in q(INV_SQL + " WHERE s.customer_id=? AND s.kind<>'return' ORDER BY s.date, s.no", (pid,)):
-        if r["total"] - r["paid"] > 0:
-            out.append({"id": r["id"], "no": r["no"], "date": r["date"], "total": r["total"], "paid": r["paid"], "rem": r["total"] - r["paid"]})
+        if r["rem"] > 0:
+            out.append({"id": r["id"], "no": r["no"], "date": r["date"], "total": r["total"], "paid": r["paid"], "rem": r["rem"]})
     return jsonify(out)
 
 

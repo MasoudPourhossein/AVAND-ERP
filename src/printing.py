@@ -67,7 +67,7 @@ def sale_print(iid):
          "seller": _person(s["customer_id"]) if ret else _company(), "buyer": _company() if ret else _person(s["customer_id"]),
          "seller_label": "مشخصات فروشنده (مرجوع‌کننده)" if ret else "مشخصات فروشنده", "buyer_label": "مشخصات خریدار",
          "lines": lines, "gross": s["gross"], "ldisc": s["ldisc"], "vat": s["vat_total"], "hdisc": s["discount"], "total": s["total"],
-         "words": num_words(s["total"]), "paid": None if ret else (s["pos"] + s["bank"], s["cash"] + s["chq"], s["total"] - paid),
+         "words": num_words(s["total"]), "paid": None if ret else (s["pos"] + s["bank"], s["cash"] + s["chq"], s["rem"]),
          "back": f"/invoices/{iid}", "edit": f"/sales/{iid}/edit" if can("void") and s["kind"] != "consign" else None,
          "ret": f"/sales/return/new?of={iid}" if can("sale") and not ret else None, "sign": ("مهر و امضای فروشنده", "مهر و امضای خریدار")}
     return _render(d)

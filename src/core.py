@@ -335,6 +335,21 @@ def stock_rows(date=None, wh_id=None):
       FROM items i LEFT JOIN item_groups gr ON gr.id=i.group_id LEFT JOIN persons sp ON sp.id=i.supplier_id ORDER BY i.code""", wa + wa + [date, date, date])
 
 
+def stock_snapshot(pairs):
+    """{(item, wh): stock} for the given pairs"""
+    return {(i, w): v1("SELECT SUM(qty) FROM stock_moves WHERE item_id=? AND wh_id=?", (i, w)) for i, w in pairs}
+
+
+def worse_negative(before):
+    """names of items whose stock is now negative AND lower than before (a document may not create or deepen a shortage)"""
+    bad = []
+    for (i, w), b in before.items():
+        a = v1("SELECT SUM(qty) FROM stock_moves WHERE item_id=? AND wh_id=?", (i, w))
+        if a < 0 and a < b:
+            bad.append(v1("SELECT name FROM items WHERE id=?", (i,)))
+    return bad
+
+
 def stock_of(item_id, wh_id):
     return v1("SELECT SUM(qty) FROM stock_moves WHERE item_id=? AND wh_id=?", (item_id, wh_id))
 
@@ -368,6 +383,10 @@ INV_SQL = """
   COALESCE((SELECT SUM(amount) FROM payments WHERE inv_id=s.id AND method='bank'),0) AS bank,
   COALESCE((SELECT SUM(amount) FROM payments WHERE inv_id=s.id AND method='cheque'),0) AS chq,
   COALESCE((SELECT SUM(amount) FROM payments WHERE inv_id=s.id),0) AS paid,
+  COALESCE((SELECT SUM(z.total) FROM v_si z WHERE z.ret_of=s.id),0) AS ret_amt,
+  CASE WHEN s.kind='return' THEN (CASE WHEN s.ret_of IS NULL THEN -s.total ELSE 0 END)
+       ELSE s.total - COALESCE((SELECT SUM(amount) FROM payments WHERE inv_id=s.id),0) - COALESCE((SELECT SUM(z.total) FROM v_si z WHERE z.ret_of=s.id),0)
+  END AS rem,
   c.no AS cons_no, c.return_no, r.no AS ret_of_no
  FROM v_si s JOIN persons cu ON cu.id=s.customer_id LEFT JOIN persons v ON v.id=s.visitor_id
  JOIN warehouses w ON w.id=s.wh_id LEFT JOIN consignments c ON c.id=s.cons_id LEFT JOIN sales_invoices r ON r.id=s.ret_of
@@ -449,7 +468,7 @@ def inv_paid(inv_id):
 def inv_status(r):
     if r.get("kind") == "return":
         return "برگشت از فروش", "warn"
-    diff = r["total"] - r["paid"]
+    diff = r["rem"]
     if diff == 0:
         return "تسویه کامل", "ok"
     return ("کسری دریافت", "bad") if diff > 0 else ("دریافت اضافه", "warn")

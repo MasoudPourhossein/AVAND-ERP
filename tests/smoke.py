@@ -296,6 +296,43 @@ assert one("SELECT code FROM items WHERE name='کالای آزاد'") == sc2 + "
 assert "نام تامین‌کننده" in [c.value for c in load_workbook(io.BytesIO(cl.get("/items/export.xlsx").data)).active[1]]
 G(f"/items?supplier={sup}"); G(f"/persons/{sup}"); G(f"/items/{k1}"); G("/purchases/new")
 gl_ok()
+# ================= sales return (against an invoice, limits, stock back to warehouse, cost, negative stock)
+stk = lambda i, w: one(f"SELECT COALESCE(SUM(qty),0) FROM stock_moves WHERE item_id={i} AND wh_id={w}")
+s0 = stk(k1, w2)
+P("/sales/new", {"date": "1405/09/03", "wh_id": w2, "party_id": c1, "item_id": [k1], "ctn": [0], "box": [10], "price": [200], "disc": [0], "vat": [0]})
+ri = one("SELECT MAX(id) FROM sales_invoices WHERE kind='direct'"); rno = one(f"SELECT no FROM sales_invoices WHERE id={ri}")
+rcost = one(f"SELECT cost FROM sales_lines WHERE inv_id={ri}")
+assert stk(k1, w2) == s0 - 10
+g = T(G(f"/sales/return/new?of={ri}")); assert '"box": 10' in g.replace("'", '"') or "box" in g
+RF = lambda qty, item=k1, cust=c1, ref=rno: {"date": "1405/09/05", "wh_id": w2, "party_id": cust, "ret_of_no": ref, "item_id": [item], "ctn": [0], "box": [qty],
+                                           "price": [200], "disc": [0], "vat": [0]}
+r = T(P(f"/sales/return/new?of={ri}", RF(12))); assert "بیشتر از مقدار قابل برگشت" in r and '"box": 12' in r, r[:300]
+assert "در فاکتور مرجع" in T(P("/sales/return/new", RF(1, item=k2)))
+assert "مشتری دیگری" in T(P("/sales/return/new", RF(1, cust=c2)))
+assert "ثبت شد" in T(P(f"/sales/return/new?of={ri}", RF(4)))
+rr = one("SELECT MAX(id) FROM sales_invoices WHERE kind='return'")
+assert stk(k1, w2) == s0 - 6 and one(f"SELECT ret_of FROM sales_invoices WHERE id={rr}") == ri
+assert one(f"SELECT cost FROM sales_lines WHERE inv_id={rr}") == rcost
+assert one(f"SELECT SUM(vl.debit) FROM voucher_lines vl JOIN vouchers v ON v.id=vl.voucher_id JOIN accounts a ON a.id=vl.account_id WHERE v.src_type='FCT' AND v.src_id={rr} AND a.sys_key='inventory'") == round(rcost * 4)
+with A.app.test_request_context():
+    from core import INV_SQL as IS_
+    import dbl as D_
+    assert D_.q(IS_ + " WHERE s.id=?", (ri,), one=True)["rem"] == 2000 - 800
+assert '"box": 6' in T(G(f"/sales/return/new?of={ri}"))
+assert "بیشتر از مقدار قابل برگشت" in T(P("/sales/return/new", RF(7)))
+assert "ثبت شد" in T(P("/sales/return/new", RF(6))) and stk(k1, w2) == s0
+assert "بیشتر از مقدار قابل برگشت" in T(P("/sales/return/new", RF(1)))
+assert "قبلا برگشت داده شده" in T(G(f"/sales/return/new?of={ri}"))
+G(f"/invoices/{ri}"); G(f"/invoices/{rr}"); G(f"/sales/{rr}/edit")
+# a return is never blocked by an existing shortage; edit of the return keeps limits
+with eng.begin() as c_:
+    c_.execute(text(f"INSERT INTO stock_moves(doc_type,doc_id,doc_no,date,item_id,wh_id,qty,cost) VALUES('RES',0,0,'1405/09/01',{k2},{w2},-50,0)"))
+assert "ثبت شد" in T(P("/sales/return/new", {"date": "1405/09/06", "wh_id": w2, "party_id": c1, "item_id": [k2], "ctn": [0], "box": [3], "price": [30],
+                                             "disc": [0], "vat": [0]}))
+assert stk(k2, w2) == -47
+with eng.begin() as c_:
+    c_.execute(text(f"DELETE FROM stock_moves WHERE doc_type='RES' AND doc_id=0"))
+gl_ok()
 print("V4 OK")
 # ================= deletion of base data
 assert "استفاده شده" in T(P(f"/delete/person/{c1}", {})) and one(f"SELECT COUNT(*) FROM persons WHERE id={c1}") == 1

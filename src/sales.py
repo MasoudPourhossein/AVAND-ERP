@@ -1,5 +1,6 @@
 """Sales: consignment (امانی) to visitors, settlement into per-customer invoices, direct sales invoices, payments."""
 from flask import render_template, request, redirect, url_for, flash, abort, session
+from core import stock_snapshot, worse_negative
 from core import (app, q, x, v1, db, next_no, to_int, uid, uname, price_at, buy_at, add_moves, del_moves, check_stock, default_wh,
                   INV_SQL, CONS_SQL, inv_paid, period, money, pkr, DOC, METHOD, can)
 from inventory import parse_lines, form_ctx, doc_out, wh_valid, item_lines, line_vat, doc_init_lines, _no_negative, _can_remove_moves
@@ -29,7 +30,7 @@ def sale_lines(iid):
     return item_lines("sales_lines", "inv_id", iid)
 
 
-def create_invoice(kind, date, customer, visitor, wh, lines, discount=0, note=None, cons_id=None, extra=None, iid=None, cost_date=None):
+def create_invoice(kind, date, customer, visitor, wh, lines, discount=0, note=None, cons_id=None, extra=None, iid=None, cost_date=None, costs=None):
     """lines: (item_id, qty, price[, disc, vat_rate]). direct -> stock out (FCT); return -> stock in (SRT); consign -> no move.
     iid given = replace an existing invoice's header and lines (number kept)."""
     ex = extra or {}
@@ -54,11 +55,11 @@ def create_invoice(kind, date, customer, visitor, wh, lines, discount=0, note=No
                    VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?)""", (no,) + hdr + (uid(),))
     for i, qt, p, d, vr in full:
         x("INSERT INTO sales_lines(inv_id,item_id,qty,price,disc,vat_rate,vat,cost) VALUES(?,?,?,?,?,?,?,?)",
-          (iid, i, qt, p, d, vr, line_vat(qt, p, d, vr), buy_at(i, cost_date or date) or 0))
+          (iid, i, qt, p, d, vr, line_vat(qt, p, d, vr), (costs or {}).get(i) or buy_at(i, cost_date or date) or 0))
     if kind == "direct":
         add_moves("FCT", iid, no, date, [(i, wh, -qt, 0) for i, qt, *_ in full])
     elif kind == "return":
-        add_moves("SRT", iid, no, date, [(i, wh, qt, buy_at(i, date) or 0) for i, qt, *_ in full])
+        add_moves("SRT", iid, no, date, [(i, wh, qt, (costs or {}).get(i) or buy_at(i, date) or 0) for i, qt, *_ in full])
     import gl
     gl.post_sale(iid)
     return no, iid
@@ -275,18 +276,37 @@ def _save_sale(kind, iid=None):
     disc = max(to_int(request.form.get("discount")), 0)
     if disc > sum(qt * p - d for _, qt, p, d, _v in lines):
         raise ValueError("تخفیف از جمع فاکتور بیشتر است.")
-    ret_of = None
+    ret_of, costs = None, None
     if kind == "return" and request.form.get("ret_of_no", "").strip():
-        ret_of = v1("SELECT id FROM sales_invoices WHERE no=? AND kind<>'return'", (to_int(request.form.get("ret_of_no")),)) or None
-        if not ret_of:
+        src = q("SELECT * FROM sales_invoices WHERE no=? AND kind<>'return'", (to_int(request.form.get("ret_of_no")),), one=True)
+        if not src:
             raise ValueError("فاکتور مرجع با این شماره پیدا نشد.")
+        if src["customer_id"] != cust:
+            raise ValueError(f"فاکتور مرجع {src['no']} متعلق به مشتری دیگری است.")
+        ret_of = src["id"]
+        sold = {r["item_id"]: r for r in q("SELECT item_id, SUM(qty) qty, MAX(cost) cost FROM sales_lines WHERE inv_id=? GROUP BY item_id", (ret_of,))}
+        back = {r["item_id"]: r["qty"] for r in q("""SELECT l.item_id, SUM(l.qty) qty FROM sales_lines l JOIN sales_invoices z ON z.id=l.inv_id
+                                                     WHERE z.ret_of=? AND z.id<>? GROUP BY l.item_id""", (ret_of, iid or 0))}
+        names = {r["id"]: r["name"] for r in q("SELECT id, name FROM items WHERE id = ANY(?)", ([l[0] for l in lines],))}
+        for i, qt, *_ in lines:
+            if i not in sold:
+                raise ValueError(f"کالای «{names.get(i)}» در فاکتور مرجع {src['no']} نیست.")
+            left = sold[i]["qty"] - back.get(i, 0)
+            if qt > left:
+                raise ValueError(f"برگشت «{names.get(i)}» بیشتر از مقدار قابل برگشت است (فروش {sold[i]['qty']:,}، برگشت قبلی {back.get(i, 0):,}، قابل برگشت {left:,}).")
+        costs = {i: r["cost"] for i, r in sold.items()}
     extra = {"due_date": norm_date(request.form.get("due_date")), "pay_terms": request.form.get("pay_terms") or None,
              "ref_no": request.form.get("ref_no", "").strip() or None, "ret_of": ret_of}
     if kind == "direct" and not iid:
         check_stock({i: qt for i, qt, *_ in lines}, wh)
-    no, iid = create_invoice(kind, date, cust, vis, wh, lines, disc, request.form.get("note"), extra=extra, iid=iid)
-    if not _no_negative("FCT" if kind == "direct" else "SRT", iid):
-        raise ValueError("موجودی بعضی کالاها در این انبار کافی نیست.")
+    pairs = {(i, wh) for i, *_ in lines}
+    if iid:
+        pairs |= {(m["item_id"], m["wh_id"]) for m in q("SELECT item_id, wh_id FROM stock_moves WHERE doc_type IN ('FCT','SRT') AND doc_id=?", (iid,))}
+    before = stock_snapshot(pairs)
+    no, iid = create_invoice(kind, date, cust, vis, wh, lines, disc, request.form.get("note"), extra=extra, iid=iid, costs=costs)
+    bad = worse_negative(before)
+    if bad:
+        raise ValueError("موجودی این کالاها در انبار کافی نیست: " + "، ".join(bad))
     return no, iid
 
 
@@ -322,9 +342,22 @@ def sale_return_new():
     src = None
     if request.args.get("of"):
         src = q("SELECT * FROM sales_invoices WHERE id=?", (to_int(request.args.get("of")),), one=True)
+    init = []
+    if src:   # prefill what can still be returned (sold minus earlier returns)
+        back = {r["item_id"]: r["qty"] for r in q("""SELECT l.item_id, SUM(l.qty) qty FROM sales_lines l JOIN sales_invoices z ON z.id=l.inv_id
+                                                     WHERE z.ret_of=? GROUP BY l.item_id""", (src["id"],))}
+        for l in q("SELECT l.*, i.pack FROM sales_lines l JOIN items i ON i.id=l.item_id WHERE l.inv_id=? ORDER BY l.id", (src["id"],)):
+            left = l["qty"] - back.pop(l["item_id"], 0)
+            if left > 0:
+                k = l["pack"] or 1
+                c, b = divmod(left, k) if k > 1 else (0, left)
+                init.append({"id": l["item_id"], "ctn": c or "", "box": b or "", "price": l["price"],
+                             "disc": round(l["disc"] * left / l["qty"]) if l["qty"] else 0, "vat": l["vat_rate"]})
+        if not init and request.method == "GET":
+            flash(f"همه کالاهای فاکتور {src['no']} قبلا برگشت داده شده است.", "bad")
+            return redirect(url_for("invoice", iid=src["id"]))
     return _sale_form("sale_return", doc={"customer_id": src["customer_id"], "visitor_id": src["visitor_id"], "wh_id": src["wh_id"],
-                                           "ret_of_no": src["no"]} if src else None,
-                      init_lines=doc_init_lines("sales_lines", "inv_id", src["id"]) if src else ())
+                                           "ret_of_no": src["no"]} if src else None, init_lines=init)
 
 
 @app.route("/sales/<int:iid>/edit", methods=["GET", "POST"])
@@ -362,7 +395,7 @@ def invoices():
         sql += " AND s.customer_id=?"; args.append(cid)
     rows = q(sql + " ORDER BY s.date DESC, s.no DESC", args)
     if only == "diff":
-        rows = [r for r in rows if r["kind"] != "return" and r["total"] != r["paid"]]
+        rows = [r for r in rows if r["kind"] != "return" and r["rem"] != 0]
     return render_template("invoices.html", rows=rows, f=f, t=t, vid=vid, cid=cid, only=only, visitors=_visitors(), customers=_customers())
 
 

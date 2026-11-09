@@ -104,7 +104,7 @@ def unpaid_invoices(t=None):
     t = t or today_j()
     out = []
     for r in q(INV_SQL + " WHERE s.kind<>'return' ORDER BY s.date, s.no"):
-        rem = r["total"] - r["paid"]
+        rem = r["rem"]
         if rem > 0:
             out.append({"id": r["id"], "no": r["no"], "date": r["date"], "c": r["cname"], "v": r["vname"] or "", "vcode": r["vcode"],
                         "ccode": r["ccode"], "total": r["total"], "paid": r["paid"], "rem": rem, "age": diff_days(r["date"], t)})

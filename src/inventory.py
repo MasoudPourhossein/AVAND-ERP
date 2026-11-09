@@ -54,9 +54,23 @@ def form_ctx(mode, parties=(), visitors=(), doc=None, init_lines=(), own_moves=N
     sm = stock_map()
     for (i, w), qv in (own_moves or {}).items():   # editing: this document's own outflow is available again
         sm.setdefault(i, {})[w] = sm.get(i, {}).get(w, 0) - qv
+    if request.method == "POST" and request.form.getlist("item_id"):
+        init_lines = posted_lines()
     return dict(mode=mode, items=stock_rows(), whs=warehouses_list(), wh=default_wh(), stock_map=sm,
                 parties=parties, visitors=visitors, doc=doc, init_lines=list(init_lines),
                 vat_on=setting("vat_on", "0") == "1", vat_def=vat_default())
+
+
+def posted_lines():
+    F = request.form
+    cols = {k: F.getlist(k) for k in ("item_id", "ctn", "box", "price", "disc", "vat")}
+    out = []
+    for n, i in enumerate(cols["item_id"]):
+        g_ = lambda k: cols[k][n] if n < len(cols[k]) else ""
+        if to_int(i):
+            out.append({"id": to_int(i), "ctn": to_int(g_("ctn")) or "", "box": to_int(g_("box")) or "", "price": to_int(g_("price")),
+                        "disc": to_int(g_("disc")), "vat": g_("vat") or 0})
+    return out
 
 
 def line_vat(qt, pr, ds, vr):
@@ -205,6 +219,9 @@ def _save_purchase(pid=None):
     x("UPDATE items SET supplier_id=? WHERE id = ANY(?) AND supplier_id IS NULL", (sid, [l[0] for l in lines]))
     hdr = (kind, date, sid, wh, request.form.get("ref_no", "").strip() or None, disc, request.form.get("note"),
            norm_date(request.form.get("due_date")), request.form.get("pay_terms") or None)
+    from core import stock_snapshot, worse_negative
+    before = stock_snapshot({(i, wh) for i, *_ in lines} |
+                            {(m["item_id"], m["wh_id"]) for m in q("SELECT item_id, wh_id FROM stock_moves WHERE doc_type='PUR' AND doc_id=?", (pid or 0,))})
     if pid:
         old = q("SELECT * FROM purchases WHERE id=?", (pid,), one=True)
         del_moves("PUR", pid)
@@ -222,8 +239,9 @@ def _save_purchase(pid=None):
         x("INSERT INTO purchase_lines(pur_id,item_id,qty,price,disc,vat_rate,vat) VALUES(?,?,?,?,?,?,?)", (pid, i, qt, p, d, vr, line_vat(qt, p, d, vr)))
     sign = -1 if kind == "return" else 1
     add_moves("PUR", pid, no, date, [(i, wh, sign * qt, (qt * p - d) / qt if qt else p) for i, qt, p, d, _v in lines])
-    if not _no_negative("PUR", pid):
-        raise ValueError("با این تغییر موجودی بعضی کالاها در انبار منفی می‌شود.")
+    bad = worse_negative(before)
+    if bad:
+        raise ValueError("با این سند موجودی این کالاها منفی می‌شود: " + "، ".join(bad))
     import gl
     gl.post_purchase(pid)
     return no, pid
