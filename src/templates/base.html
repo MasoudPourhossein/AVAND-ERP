@@ -125,5 +125,17 @@
 })();
 document.querySelectorAll('.content table').forEach(t=>{if(!t.closest('.tw')&&!t.closest('.doc-foot')&&!t.classList.contains('lines')){const w=document.createElement('div');w.className='tw';t.parentNode.insertBefore(w,t);w.appendChild(t)}});
 </script>
+<script>
+/* box price <-> carton price: <input data-ctn-of="price"> next to <input name="price">; pack from data-pack or the form's [name=pack] */
+function ctnPairs(root){(root||document).querySelectorAll('input[data-ctn-of]').forEach(c=>{if(c._pp)return;c._pp=1;
+  const f=c.form,b=f.querySelector('[name="'+c.dataset.ctnOf+'"]'),pk=f.querySelector('[name=pack]');let last='b';
+  const k=()=>Math.max(+(c.dataset.pack||(pk&&pk.value))||1,1),hint=c.parentElement.querySelector('.ctn-hint');
+  const show=()=>{if(hint){const v=+c.value||0,kk=k();hint.textContent=kk>1&&v?('هر باکس '+Math.round(v/kk).toLocaleString('en-US')+(v%kk?' (گرد شد)':'')):''}};
+  const fromB=()=>{c.value=b.value!==''?Math.round(+b.value*k()):'';show()},fromC=()=>{if(c.value!=='')b.value=Math.round(+c.value/k());show()};
+  b.addEventListener('input',()=>{last='b';fromB()});c.addEventListener('input',()=>{last='c';fromC()});
+  if(pk&&!c.dataset.pack)pk.addEventListener('input',()=>last==='c'?fromC():fromB());
+  c._sync=fromB;fromB()})}
+document.addEventListener('DOMContentLoaded',()=>ctnPairs());
+</script>
 {% block js %}{% endblock %}
 </body></html>

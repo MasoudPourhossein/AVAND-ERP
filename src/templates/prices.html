@@ -3,10 +3,12 @@
 <div class="card"><h3>{{ icon('tags') }} ثبت نرخ جدید</h3>
 <form method="post" class="f" id="pf">
 <div style="grid-column:1/-1"><label>کالا</label><select name="item_id" id="pi" required><option value="">انتخاب کالا</option>
-{% for i in items %}<option value="{{ i.id }}" data-b="{{ i.buy|int }}" data-p="{{ i.price }}">{{ i.code }} - {{ i.name }}</option>{% endfor %}</select></div>
+{% for i in items %}<option value="{{ i.id }}" data-b="{{ i.buy|int }}" data-p="{{ i.price }}" data-k="{{ i.pack or 1 }}">{{ i.code }} - {{ i.name }}</option>{% endfor %}</select></div>
 <div><label>تاریخ اعمال</label><input name="date" value="{{ today }}"></div>
-<div><label>نرخ خرید (ریال)</label><input name="buy" id="pb" type="number" min="0"></div>
-<div><label>نرخ فروش (ریال)</label><input name="price" id="pp" type="number" min="0"></div>
+<div><label>نرخ خرید هر باکس (ریال)</label><input name="buy" id="pb" type="number" min="0"></div>
+<div><label>یا نرخ خرید هر کارتن</label><input data-ctn-of="buy" data-pack="1" class="pk" type="number" min="0"><small class="muted ctn-hint"></small></div>
+<div><label>نرخ فروش هر باکس (ریال)</label><input name="price" id="pp" type="number" min="0"></div>
+<div><label>یا نرخ فروش هر کارتن</label><input data-ctn-of="price" data-pack="1" class="pk" type="number" min="0"><small class="muted ctn-hint"></small></div>
 <div><button class="btn g">ثبت نرخ</button></div></form>
 <p class="note">خالی گذاشتن هر نرخ = همان نرخ فعلی حفظ می‌شود. نرخ جدید از تاریخ اعمال به بعد استفاده می‌شود و فاکتورهای قبلی تغییر نمی‌کنند.
 سود = (نرخ فروش − نرخ خرید) × تعداد فروش.</p></div>
@@ -27,4 +29,5 @@
 {% for r in rows %}<tr><td>{{ r.date }}</td><td>{{ r.code }}</td><td>{{ r.name }}</td><td class="n">{{ r.buy|m }}</td><td class="n">{{ r.price|m }}</td>
 <td><form method="post" action="/prices/{{ r.id }}/delete" onsubmit="return confirm('حذف شود؟')" class="keep-del"><button class="btn sm r">حذف</button></form></td></tr>{% endfor %}</table></div>
 {% endblock %}
-{% block js %}<script>document.getElementById('pi').addEventListener('change',e=>{const o=e.target.selectedOptions[0];document.getElementById('pb').placeholder=o.dataset.b||'';document.getElementById('pp').placeholder=o.dataset.p||''})</script>{% endblock %}
+{% block js %}<script>document.getElementById('pi').addEventListener('change',e=>{const o=e.target.selectedOptions[0];document.getElementById('pb').placeholder=o.dataset.b||'';document.getElementById('pp').placeholder=o.dataset.p||'';
+  document.querySelectorAll('#pf .pk').forEach(c=>{c.dataset.pack=o.dataset.k||1;c.disabled=+c.dataset.pack<=1;c._sync&&c._sync()})})</script>{% endblock %}

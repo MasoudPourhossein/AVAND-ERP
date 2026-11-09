@@ -11,7 +11,9 @@
 <form method="post" action="/prices" class="f"><input type="hidden" name="item_id" value="{{ it.id }}"><input type="hidden" name="back" value="/items/{{ it.id }}">
 <div><label>تاریخ اعمال</label><input name="date" value="{{ today }}"></div>
 <div><label>نرخ خرید هر {{ it.unit }} (ریال)</label><input name="buy" type="number" min="0" value="{{ buy|int }}"></div>
+{% if it.pack > 1 %}<div><label>یا نرخ خرید هر {{ it.pack_unit }} ({{ it.pack }} {{ it.unit }})</label><input data-ctn-of="buy" data-pack="{{ it.pack }}" type="number" min="0"><small class="muted ctn-hint"></small></div>{% endif %}
 <div><label>نرخ فروش هر {{ it.unit }} (ریال)</label><input name="price" type="number" min="0" value="{{ price }}"></div>
+{% if it.pack > 1 %}<div><label>یا نرخ فروش هر {{ it.pack_unit }} ({{ it.pack }} {{ it.unit }})</label><input data-ctn-of="price" data-pack="{{ it.pack }}" type="number" min="0"><small class="muted ctn-hint"></small></div>{% endif %}
 <div><button class="btn g">ثبت نرخ</button></div></form>
 <p class="note">سود هر فاکتور = (نرخ فروش − نرخ خرید در تاریخ فاکتور قطعی) × تعداد فروش.</p></div>
 <div class="card"><h3>ویرایش مشخصات</h3>
@@ -30,7 +32,7 @@
 <div><button class="btn">ذخیره</button></div>
 <div><button class="btn r" formaction="/delete/item/{{ it.id }}" formnovalidate onclick="return confirm('کالای «{{ it.name }}» حذف شود؟ موجودی اولیه آن هم حذف می‌شود؛ اگر در فاکتور یا سندی آمده باشد حذف نمی‌شود.')">حذف کالا</button></div>
 <input type="hidden" name="next" value="/items/{{ it.id }}"></form>
-<p class="note">موجودی به واحد فروش ذخیره می‌شود؛ تغییر تعداد در بسته فقط نمایش کارتنی را عوض می‌کند.</p></div>{% endif %}
+<p class="note">موجودی به واحد فروش ذخیره می‌شود؛ تغییر «تعداد باکس در هر کارتن» فقط نمایش کارتنی را عوض می‌کند.</p></div>{% endif %}
 </div>
 <div class="card"><h3>موجودی به تفکیک انبار</h3><table><tr><th>انبار</th><th>موجودی</th></tr>
 {% for w in by_wh %}<tr><td>{{ w.name }}</td><td>{{ pkr(w.st, it) }}</td></tr>{% endfor %}</table></div>
