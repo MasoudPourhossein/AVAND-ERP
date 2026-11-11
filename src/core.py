@@ -393,6 +393,14 @@ def del_moves(doc_type, doc_id):
     x("DELETE FROM stock_moves WHERE doc_type=? AND doc_id=?", (doc_type, doc_id))
 
 
+def qty_by_item(lines):
+    """{item_id: total qty} — an item may appear on several lines of a document"""
+    out = {}
+    for l in lines:
+        out[l[0]] = out.get(l[0], 0) + l[1]
+    return out
+
+
 def check_stock(needs, wh_id):
     """needs: {item_id: qty}. raises ValueError if any item is short in wh"""
     for i, qt in needs.items():

@@ -388,6 +388,22 @@ assert one(f"SELECT unit_cost FROM receipt_lines WHERE item_id={z0}") == 1000
 P("/sales/new", {"date": "1405/09/03", "wh_id": w1, "party_id": c1, "item_id": [z0], "ctn": [1], "box": [0], "price": [1500], "disc": [0], "vat": [0]})
 assert round(one(f"SELECT cost FROM sales_lines WHERE item_id={z0}")) == 1000
 assert "1,000" in T(G("/items")); gl_ok()
+# same item on several lines with different prices (confirmed), stock checked on the total
+P("/items", {"code": "DUP1", "name": "کالای دو ردیفه", "unit": "عدد", "pack": 1, "buy": "100", "price": "200", "init_box": 10, "wh_id": w1, "date": "1405/09/01"})
+d1 = one("SELECT id FROM items WHERE code='DUP1'")
+DS = {"date": "1405/09/02", "wh_id": w1, "party_id": c1, "item_id": [d1, d1], "ctn": [0, 0], "box": [3, 2], "price": [200, 0], "disc": [0, 0], "vat": [0, 0]}
+assert "در چند ردیف" in T(P("/sales/new", DS))
+assert "کافی نیست" in T(P("/sales/new", dict(DS, box=[6, 6], allow_dup="1")))
+ns1 = one("SELECT COUNT(*) FROM sales_invoices"); P("/sales/new", dict(DS, allow_dup="1")); assert one("SELECT COUNT(*) FROM sales_invoices") == ns1 + 1
+di = one("SELECT MAX(id) FROM sales_invoices")
+assert one(f"SELECT COUNT(*) FROM sales_lines WHERE inv_id={di}") == 2 and stk(d1, w1) == 5
+assert one(f"SELECT net_total FROM v_si WHERE id={di}") == 600 and round(one(f"SELECT SUM(qty*cost) FROM sales_lines WHERE inv_id={di}")) == 500
+r = T(G("/reports/fin/profit?from=1405/09/02&to=1405/09/02&by=item")); assert "600" in r and "500" in r and "100" in r
+g_ = T(G(f"/sales/{di}/edit")); assert "dupw" in g_
+P(f"/sales/return/new?of={di}", {"date": "1405/09/03", "wh_id": w1, "party_id": c1, "ret_of_no": one(f"SELECT no FROM sales_invoices WHERE id={di}"),
+                                   "item_id": [d1], "ctn": [0], "box": [4], "price": [200], "disc": [0], "vat": [0]})
+assert stk(d1, w1) == 9 and '"box": 1' in T(G(f"/sales/return/new?of={di}"))
+gl_ok()
 # ================= weighted-average cost & profit (several purchases, several sales)
 P("/items", {"code": "AVG1", "name": "کالای میانگین", "unit": "عدد", "pack": 1, "date": "1405/09/10"}); av = one("SELECT id FROM items WHERE code='AVG1'")
 PF = lambda d, qty, pr, kind="buy": {"date": d, "wh_id": w1, "party_id": sup, "kind": kind, "item_id": [av], "ctn": [0], "box": [qty], "price": [pr], "disc": [0], "vat": [0]}

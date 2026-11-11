@@ -1,6 +1,7 @@
 """Stock documents: receipts (رسید), purchases (خرید/برگشت از خرید), transfers (حواله بین انبار)."""
 import io
 from flask import send_file, render_template, request, redirect, url_for, flash, abort
+from core import qty_by_item
 from core import (app, q, x, v1, db, next_no, to_int, uid, uname, stock_rows, add_moves, del_moves, check_stock, default_wh,
                   warehouses_list, period, money, pkr, DOC, can)
 from jalali import today_j, norm_date
@@ -32,8 +33,9 @@ def parse_lines(with_price=False, full=False):
         qt = ct * packs.get(i, 1) + bx
         if qt <= 0:
             continue
-        if i in seen:
-            raise ValueError("یک کالا دو بار در سند آمده است.")
+        if i in seen and request.form.get("allow_dup") != "1":
+            nm = v1("SELECT name FROM items WHERE id=?", (i,))
+            raise ValueError(f"کالای «{nm}» در چند ردیف آمده است؛ اگر عمدی است، تکرار را در همان ردیف تایید کنید.")
         seen.add(i)
         if ds > qt * pr:
             raise ValueError("تخفیف یک ردیف از مبلغ آن بیشتر است.")
@@ -333,7 +335,7 @@ def _save_purchase(pid=None):
         pid = x("""INSERT INTO purchases(no,kind,date,supplier_id,wh_id,ref_no,discount,note,due_date,pay_terms,created_by)
                    VALUES(?,?,?,?,?,?,?,?,?,?,?)""", (no,) + hdr + (uid(),))
     if kind == "return":
-        check_stock({i: qt for i, qt, *_ in lines}, wh)
+        check_stock(qty_by_item(lines), wh)
     for i, qt, p, d, vr in lines:
         x("INSERT INTO purchase_lines(pur_id,item_id,qty,price,disc,vat_rate,vat) VALUES(?,?,?,?,?,?,?)", (pid, i, qt, p, d, vr, line_vat(qt, p, d, vr)))
     sign = -1 if kind == "return" else 1
@@ -519,7 +521,7 @@ def transfer_new():
             if a == b:
                 raise ValueError("انبار مبدا و مقصد یکی است.")
             lines = parse_lines()
-            check_stock({i: qt for i, qt, _ in lines}, a)
+            check_stock(qty_by_item(lines), a)
             no = next_no("TRF")
             tid = x("INSERT INTO transfers(no,date,from_wh,to_wh,note,created_by) VALUES(?,?,?,?,?,?)", (no, date, a, b, request.form.get("note"), uid()))
             for i, qt, _ in lines:

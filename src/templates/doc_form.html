@@ -70,7 +70,9 @@
   <span class="muted">قالب را با «قالب اکسل خرید» بگیرید، تعداد و نرخ را پر کنید؛ فاکتور برای بازبینی در همین فرم پر می‌شود و بعد ثبت می‌کنید.</span></form>{% endif %}
 <template id="rt"><tr><td class="i"></td><td class="del-td" style="text-align:left"><button type="button" class="btn sm r del" tabindex="-1">×</button></td>
   <td class="pick" data-l="کد کالا"><input class="code" placeholder="کد"><input type="hidden" name="item_id"></td>
-  <td class="pick" data-l="نام کالا"><input class="name" placeholder="نام کالا"></td>
+  <td class="pick" data-l="نام کالا"><input class="name" placeholder="نام کالا">
+    <div class="dupw" style="display:none;color:#b45309;font-size:12px;margin-top:4px">⚠ این کالا در ردیف <b class="dupn"></b> هم آمده است.
+      <label style="display:inline-flex;gap:4px;align-items:center;margin:0 6px 0 0;color:#b45309"><input type="checkbox" class="dupok" style="width:auto;margin:0"> عمدی است، ثبت شود</label></div></td>
   <td class="st wide" data-l="موجودی انبار" style="font-size:12px">-</td>
   <td data-l="کارتن"><input name="ctn" type="number" min="0" inputmode="numeric"></td><td data-l="باکس"><input name="box" type="number" min="0" inputmode="numeric"></td>
   <td class="tqr wide" data-l="جمع تعداد" style="font-size:12px">-</td>
@@ -124,7 +126,6 @@ function setItem(tr,x){tr.querySelector('input[name=item_id]').value=x?x.id:'';t
   if(HASPRICE){const pi=tr.querySelector('input[name=price]');if(x&&!pi.value)pi.value=defPrice(x)||'';syncCtn(tr,x)}
   if(FULL){const vi=tr.querySelector('input[name=vat]');if(x&&vi.value==='')vi.value=defVat(x)}
   const ci=tr.querySelector('input[name=ctn]');ci.disabled=!!(x&&x.k<=1);if(ci.disabled)ci.value='';ci.placeholder=x&&x.k>1?('×'+x.k):'';
-  if(x){const dup=[...rowsEl.querySelectorAll('input[name=item_id]')].filter(h=>h.value==x.id).length>1;if(dup)alert('این کالا قبلا در سند آمده است.')}
   calc();if(x)tr.querySelector(x.k>1?'input[name=ctn]':'input[name=box]').focus()}
 // carton price <-> box price (prices are stored per box)
 function syncCtn(tr,x){const pc=tr.querySelector('.pctn');if(!pc)return;const k=x?x.k:1;pc.disabled=k<=1;pc.style.display=k>1?'block':'none';
@@ -154,11 +155,17 @@ function addRow(focus){const t=document.getElementById('rt').content.cloneNode(t
   rowsEl.appendChild(tr);num();if(focus)code.focus();return tr}
 function num(){rowsEl.querySelectorAll('tr').forEach((r,i)=>r.querySelector('.i').textContent=i+1)}
 function isOut(){return OUT||(MODE==='purchase'&&document.getElementById('pkind').value==='return')}
-function calc(){let q=0,G=0,Dd=0,V=0,A=0;rowsEl.querySelectorAll('tr').forEach(r=>{const x=byId[r.querySelector('input[name=item_id]').value],ci=r.querySelector('input[name=ctn]'),bi=r.querySelector('input[name=box]'),
+const rowQty=r=>{const x=byId[r.querySelector('input[name=item_id]').value];return (+r.querySelector('input[name=ctn]').value||0)*(x?x.k:1)+(+r.querySelector('input[name=box]').value||0)};
+function calc(){let q=0,G=0,Dd=0,V=0,A=0;const TOT={},FIRST={};
+  [...rowsEl.querySelectorAll('tr')].forEach(r=>{const id=r.querySelector('input[name=item_id]').value;if(!id)return;TOT[id]=(TOT[id]||0)+rowQty(r);
+    const w=r.querySelector('.dupw');if(FIRST[id]){w.style.display='';w.querySelector('.dupn').textContent=FIRST[id].querySelector('.i').textContent}
+    else{FIRST[id]=r;w.style.display='none';w.querySelector('.dupok').checked=false}});
+  rowsEl.querySelectorAll('tr').forEach(r=>{const x=byId[r.querySelector('input[name=item_id]').value],ci=r.querySelector('input[name=ctn]'),bi=r.querySelector('input[name=box]'),
   n=(+ci.value||0)*(x?x.k:1)+(+bi.value||0);r.querySelector('.tqr').textContent=n?pkf(n,x):'-';
-  if(x){const st=stk(x),after=isOut()?st-n:(OUT===false&&MODE!=='transfer'?st+n:null);
+  const nt=x?TOT[x.id]:n;
+  if(x){const st=stk(x),after=isOut()?st-nt:(OUT===false&&MODE!=='transfer'?st+nt:null);
     r.querySelector('.st').innerHTML=pkf(st,x)+(n&&after!==null?'<br><small style="color:'+(after<0?'#dc2626':'#059669')+'">بعد از این سند: '+pkf(after,x)+'</small>':'')}
-  q+=n;const over=!!(x&&isOut()&&n>stk(x));ci.style.background=bi.style.background=over?'#fee2e2':'';
+  q+=n;const over=!!(x&&isOut()&&nt>stk(x));ci.style.background=bi.style.background=over?'#fee2e2':'';
   let s=0;if(HASPRICE){const g=n*(+r.querySelector('input[name=price]').value||0);s=g;G+=g;
     if(FULL){const d=+r.querySelector('input[name=disc]').value||0,vr=+r.querySelector('input[name=vat]').value||0,v=Math.round((g-d)*vr/100);Dd+=d;V+=v;s=g-d+v;
       r.querySelector('input[name=disc]').style.background=d>g?'#fee2e2':''}}
@@ -204,12 +211,19 @@ async function quickAdd(){const name=prompt('نام مشتری جدید:');if(!n
 document.getElementById('frm').addEventListener('submit',e=>{
   if(PIN&&!PID.value){e.preventDefault();alert('{{ PARTY[mode][0] if mode in PARTY else "" }} را از لیست انتخاب کنید.');PIN.focus();return}
   const bad=[...rowsEl.children].find(r=>(r.querySelector('.code').value||r.querySelector('.name').value)&&!r.querySelector('input[name=item_id]').value);
-  if(bad){e.preventDefault();alert('کالای ردیف '+bad.querySelector('.i').textContent+' از لیست انتخاب نشده است.');bad.querySelector('.code').focus()}});
+  if(bad){e.preventDefault();alert('کالای ردیف '+bad.querySelector('.i').textContent+' از لیست انتخاب نشده است.');bad.querySelector('.code').focus();return}
+  calc();const dups=[...rowsEl.querySelectorAll('.dupw')].filter(w=>w.style.display!=='none'&&rowQty(w.closest('tr')));
+  const un=dups.find(w=>!w.querySelector('.dupok').checked);
+  if(un){e.preventDefault();un.closest('tr').scrollIntoView({block:'center'});un.style.background='#fef3c7';un.querySelector('.dupok').focus();
+    alert('کالای ردیف '+un.closest('tr').querySelector('.i').textContent+' تکراری است؛ اگر عمدی است تیک «عمدی است» را در همان ردیف بزنید.');return}
+  let ad=document.getElementById('allow_dup');if(!ad){ad=document.createElement('input');ad.type='hidden';ad.name='allow_dup';ad.id='allow_dup';e.target.appendChild(ad)}
+  ad.value=dups.length?'1':''});
 window.addEventListener('scroll',e=>{if(!PL.contains(e.target))hideList()},true);
 if(INIT.length){INIT.forEach(l=>{const tr=addRow(false),x=byId[l.id];if(!x)return;
   tr.querySelector('input[name=price]')&&(tr.querySelector('input[name=price]').value=l.price);
   if(FULL){tr.querySelector('input[name=disc]').value=l.disc||'';tr.querySelector('input[name=vat]').value=l.vat||0}
-  tr.querySelector('input[name=ctn]').value=l.ctn||'';tr.querySelector('input[name=box]').value=l.box||'';setItem(tr,x)});addRow(false);calc()}
+  tr.querySelector('input[name=ctn]').value=l.ctn||'';tr.querySelector('input[name=box]').value=l.box||'';setItem(tr,x)});addRow(false);calc();
+  rowsEl.querySelectorAll('.dupw').forEach(w=>{if(w.style.display!=='none')w.querySelector('.dupok').checked=true})}
 else for(let i=0;i<(innerWidth<640?1:5);i++)addRow(false);
 (PIN&&!PIN.value?PIN:rowsEl.querySelector('.code')).focus();
 </script>

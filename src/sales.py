@@ -1,6 +1,6 @@
 """Sales: consignment (امانی) to visitors, settlement into per-customer invoices, direct sales invoices, payments."""
 from flask import render_template, request, redirect, url_for, flash, abort, session
-from core import stock_snapshot, worse_negative
+from core import stock_snapshot, worse_negative, qty_by_item
 from core import (app, q, x, v1, db, next_no, to_int, uid, uname, price_at, buy_at, add_moves, del_moves, check_stock, default_wh,
                   INV_SQL, CONS_SQL, inv_paid, period, money, pkr, DOC, METHOD, can)
 from inventory import parse_lines, form_ctx, doc_out, wh_valid, item_lines, line_vat, doc_init_lines, _no_negative, _can_remove_moves
@@ -109,7 +109,7 @@ def amani_new():
             if not q("SELECT 1 FROM persons WHERE id=? AND (is_visitor=1 OR is_customer=1)", (vid,), one=True):
                 raise ValueError("ویزیتور یا مشتری تحویل‌گیرنده را انتخاب کنید.")
             lines = parse_lines()
-            check_stock({i: qt for i, qt, _ in lines}, wh)
+            check_stock(qty_by_item(lines), wh)
             no = next_no("AMN")
             cid = x("INSERT INTO consignments(no,date,visitor_id,wh_id,note,created_by) VALUES(?,?,?,?,?,?)",
                     (no, date, vid, wh, request.form.get("note"), uid()))
@@ -298,7 +298,7 @@ def _save_sale(kind, iid=None):
         back = {r["item_id"]: r["qty"] for r in q("""SELECT l.item_id, SUM(l.qty) qty FROM sales_lines l JOIN sales_invoices z ON z.id=l.inv_id
                                                      WHERE z.ret_of=? AND z.id<>? GROUP BY l.item_id""", (ret_of, iid or 0))}
         names = {r["id"]: r["name"] for r in q("SELECT id, name FROM items WHERE id = ANY(?)", ([l[0] for l in lines],))}
-        for i, qt, *_ in lines:
+        for i, qt in qty_by_item(lines).items():
             if i not in sold:
                 raise ValueError(f"کالای «{names.get(i)}» در فاکتور مرجع {src['no']} نیست.")
             left = sold[i]["qty"] - back.get(i, 0)
@@ -308,7 +308,7 @@ def _save_sale(kind, iid=None):
     extra = {"due_date": norm_date(request.form.get("due_date")), "pay_terms": request.form.get("pay_terms") or None,
              "ref_no": request.form.get("ref_no", "").strip() or None, "ret_of": ret_of}
     if kind == "direct" and not iid:
-        check_stock({i: qt for i, qt, *_ in lines}, wh)
+        check_stock(qty_by_item(lines), wh)
     pairs = {(i, wh) for i, *_ in lines}
     if iid:
         pairs |= {(m["item_id"], m["wh_id"]) for m in q("SELECT item_id, wh_id FROM stock_moves WHERE doc_type IN ('FCT','SRT') AND doc_id=?", (iid,))}
@@ -357,7 +357,9 @@ def sale_return_new():
         back = {r["item_id"]: r["qty"] for r in q("""SELECT l.item_id, SUM(l.qty) qty FROM sales_lines l JOIN sales_invoices z ON z.id=l.inv_id
                                                      WHERE z.ret_of=? GROUP BY l.item_id""", (src["id"],))}
         for l in q("SELECT l.*, i.pack FROM sales_lines l JOIN items i ON i.id=l.item_id WHERE l.inv_id=? ORDER BY l.id", (src["id"],)):
-            left = l["qty"] - back.pop(l["item_id"], 0)
+            used = min(l["qty"], back.get(l["item_id"], 0))      # earlier returns are taken from the item's lines in order
+            back[l["item_id"]] = back.get(l["item_id"], 0) - used
+            left = l["qty"] - used
             if left > 0:
                 k = l["pack"] or 1
                 c, b = divmod(left, k) if k > 1 else (0, left)
