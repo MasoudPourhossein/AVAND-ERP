@@ -6,14 +6,21 @@
   {{ tile('/reports/visitors','users','عملکرد ویزیتورها','فروش، مرجوعی، مانده و نمودار') }}
   {{ tile('/reports/customers','users','فروش به تفکیک مشتری','فروش و مانده هر مشتری') }}
   {{ tile('/reports/sales','receipt','ریز فروش','فاکتور، مشتری، ویزیتور، انبار، کالا') }}
+  {{ tile('/reports/trend','chart-line','روند فروش','روزانه، هفتگی، ماهانه با سود، رشد و میانگین متحرک') }}
   {{ tile('/reports/monthly','calendar','فروش ماهانه','۱۲ ماه سال به تفکیک ویزیتور، مشتری، گروه، کالا') }}
+  {{ tile('/reports/matrix','list','جدول فروش','ویزیتور/مشتری × گروه کالا/تامین‌کننده') }}
+  {{ tile('/reports/abc','chart-column','تحلیل ABC کالا','کالاهای مهم بر اساس فروش یا سود') }}
+  {{ tile('/reports/inactive','users','مشتریان غیرفعال','مشتریانی که مدتی خرید نکرده‌اند') }}
   {{ tile('/reports/returns','undo-2','گزارش مرجوعی','برگه‌های مرجوعی و درصد برگشت') }}
   {{ tile('/invoices','file-check','فاکتورهای فروش','وضعیت تسویه هر فاکتور') }}
 </div></div>{% endif %}
 {% if can('rep_stock') %}<div class="card"><h3>{{ icon('warehouse') }} انبار و خرید</h3><div class="grid g3 tiles">
   {{ tile('/reports/stock','boxes','موجودی و ارزش انبار','هر انبار یا همه انبارها') }}
   {{ tile('/reports/kardex','book-open','کاردکس کالا','وارده، صادره و مانده با سند') }}
-  {{ tile('/reports/items','package','گردش کالا به کالا','رسید، خرید، حواله، امانی، مرجوعی، فروش') }}
+  {{ tile('/reports/groups','boxes','گردش گروه کالا','اول دوره، وارده، صادره، ارزش، فروش و سود هر گروه') }}
+  {{ tile('/reports/items','package','گردش کالا به کالا','با فیلتر گروه و تامین‌کننده، اول و پایان دوره') }}
+  {{ tile('/reports/cover','hourglass','پوشش موجودی و سفارش','روز پوشش و پیشنهاد سفارش به کارتن') }}
+  {{ tile('/reports/price-changes','trending-up','تغییرات نرخ','نرخ خرید و فروش قبل و بعد، اثر بر سود') }}
   {{ tile('/reports/idle','boxes','کالاهای راکد','موجودی بدون فروش در بازه') }}
   {{ tile('/reports/amani','hourglass','کالای امانی نزد ویزیتورها','جمع و به تفکیک ویزیتور') }}
   {{ tile('/reports/purchases','inbox','گزارش خرید','به تفکیک تامین‌کننده و کالا') }}

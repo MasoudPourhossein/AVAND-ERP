@@ -360,6 +360,30 @@ def stock_rows(date=None, wh_id=None):
       FROM items i LEFT JOIN item_groups gr ON gr.id=i.group_id LEFT JOIN persons sp ON sp.id=i.supplier_id ORDER BY i.code""", wa + wa + [date] + [date, date] * 4)
 
 
+def due_from_items(date, lines, person_id=None):
+    """default due date: invoice date + weighted average of the items' payment terms (weight = line amount after line discount).
+    Items without a term use the person's term. None when no item has a term (the person's term applies as before).
+    -> (due_date, days) or (None, None)"""
+    from jalali import add_days
+    ids = [l[0] for l in lines]
+    days = {r["id"]: r["pay_days"] for r in q("SELECT id, pay_days FROM items WHERE id = ANY(?)", (ids,))}
+    if not ids or all(days.get(i) is None for i in ids):
+        return None, None
+    pd = v1("SELECT credit_days FROM persons WHERE id=?", (person_id,)) if person_id else 0
+    W = S = 0.0
+    for l in lines:
+        w = max(l[1] * (l[2] if len(l) > 2 else 0) - (l[3] if len(l) > 3 else 0), 0)
+        d = days.get(l[0])
+        W += w; S += w * (pd if d is None else d)
+    if W <= 0:                                       # all prices 0: weight by quantity
+        W = S = 0.0
+        for l in lines:
+            d = days.get(l[0])
+            W += l[1]; S += l[1] * (pd if d is None else d)
+    n = int(S / W + 0.5) if W else 0
+    return add_days(date, n), n
+
+
 def stock_snapshot(pairs):
     """{(item, wh): stock} for the given pairs"""
     return {(i, w): v1("SELECT SUM(qty) FROM stock_moves WHERE item_id=? AND wh_id=?", (i, w)) for i, w in pairs}

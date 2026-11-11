@@ -36,7 +36,7 @@
     {% if mode=='sale' %}<div><label>شماره سفارش / مرجع</label><input name="ref_no" value="{{ fv('ref_no') }}"></div>{% endif %}
     {% if FULL %}
     {% set pt = fv('pay_terms') %}<div><label>نحوه پرداخت</label><select name="pay_terms"><option value="">—</option>{% for t in PAY_TERMS %}<option {{ 'selected' if pt==t }}>{{ t }}</option>{% endfor %}</select></div>
-    <div><label>سررسید پرداخت</label><input name="due_date" value="{{ fv('due_date') }}" placeholder="1405/09/01"></div>
+    <div><label>سررسید پرداخت — خالی = میانگین وزنی فرجه کالاها</label><input name="due_date" id="due" value="{{ '' if (D.due_auto and F.get('due_date') is none) else fv('due_date') }}" placeholder="خودکار" oninput="dueCalc()"><small id="duep" class="muted"></small></div>
     <div><label>تخفیف نهایی فاکتور (ریال)</label><input name="discount" id="disc" type="number" min="0" value="{{ fv('discount', 0) }}" oninput="calc()"></div>
     {% endif %}
     <div style="grid-column:1/-1"><label>توضیح</label><input name="note" value="{{ fv('note') }}"></div>
@@ -92,8 +92,8 @@
 const MODE={{ mode|tojson }},OUT={{ OUT|tojson }},HASPRICE={{ HASPRICE|tojson }},FULL={{ FULL|tojson }},VATON={{ (vat_on or false)|tojson }},VATDEF={{ (vat_def or 0)|tojson }};
 const INIT={{ init_lines|tojson }};
 const ST={{ stock_map|tojson }};
-const IT=[{% for i in items if i.active %}{id:{{ i.id }},code:{{ i.code|tojson }},name:{{ i.name|tojson }},p:{{ i.price|int }},c:{{ i.cost|round|int }},k:{{ i.pack or 1 }},u:{{ i.unit|tojson }},pu:{{ i.pack_unit|tojson }},v:{{ (i.vat_rate if i.vat_rate is not none else -1)|tojson }},s:{{ (i.supplier_id or 0)|tojson }}},{% endfor %}];
-let PS=[{% for v in parties %}{id:{{ v.id }},code:{{ v.code|tojson }},name:{{ v.name|tojson }},vid:{{ (v.visitor_id or 0)|tojson }}},{% endfor %}];
+const IT=[{% for i in items if i.active %}{id:{{ i.id }},code:{{ i.code|tojson }},name:{{ i.name|tojson }},p:{{ i.price|int }},c:{{ i.cost|round|int }},k:{{ i.pack or 1 }},u:{{ i.unit|tojson }},pu:{{ i.pack_unit|tojson }},v:{{ (i.vat_rate if i.vat_rate is not none else -1)|tojson }},s:{{ (i.supplier_id or 0)|tojson }},pd:{{ (i.pay_days if i.pay_days is not none else -1)|tojson }}},{% endfor %}];
+let PS=[{% for v in parties %}{id:{{ v.id }},code:{{ v.code|tojson }},name:{{ v.name|tojson }},vid:{{ (v.visitor_id or 0)|tojson }},cd:{{ (v.credit_days or 0)|tojson }}},{% endfor %}];
 const byId=Object.fromEntries(IT.map(x=>[x.id,x]));
 const avail=()=>{if(MODE!=='purchase')return IT;const s=+(document.getElementById('pid')||{}).value||0;return s?IT.filter(x=>!x.s||x.s===s):IT};
 const f=n=>Number(n||0).toLocaleString('en-US');
@@ -175,7 +175,13 @@ function calc(){let q=0,G=0,Dd=0,V=0,A=0;const TOT={},FIRST={};
   if(FULL){const h=+document.getElementById('disc').value||0;document.getElementById('td').textContent=f(Dd);document.getElementById('tx').textContent=f(V);
     document.getElementById('s_g').textContent=f(G);document.getElementById('s_d').textContent=f(Dd);document.getElementById('s_v').textContent=f(V);
     document.getElementById('s_h').textContent=f(h);document.getElementById('s_t').textContent=f(G-Dd+V-h)}
-  num()}
+  dueCalc();num()}
+function dueCalc(){const el=document.getElementById('duep');if(!el)return;const pe=document.getElementById('pid'),P=PS.find(p=>p.id==(pe&&pe.value)),pd=P?P.cd:0;
+  let W=0,S=0,Wq=0,Sq=0,any=false;rowsEl.querySelectorAll('tr').forEach(r=>{const x=byId[r.querySelector('input[name=item_id]').value];if(!x)return;
+    const n=rowQty(r),pr=r.querySelector('input[name=price]'),dc=r.querySelector('input[name=disc]'),w=Math.max(n*(pr?+pr.value||0:0)-(dc?+dc.value||0:0),0),d=x.pd>=0?x.pd:pd;
+    if(x.pd>=0)any=true;W+=w;S+=w*d;Wq+=n;Sq+=n*d});
+  const days=W>0?Math.round(S/W):(Wq>0?Math.round(Sq/Wq):0),pk_=document.getElementById('pkind'),ok=MODE==='sale'||(MODE==='purchase'&&(!pk_||pk_.value==='buy'));
+  el.textContent=!ok?'':document.getElementById('due').value?'سررسید دستی':any?'پیش‌فرض: '+days+' روز پس از تاریخ فاکتور (میانگین وزنی فرجه کالاها)':''}
 let lastRow=null;
 WS.addEventListener('change',calc);const PK=document.getElementById('pkind');if(PK)PK.addEventListener('change',calc);
 const IM=document.getElementById('im'),IQ=document.getElementById('imq'),IR=document.getElementById('imr');let mAct=0,mList=[];
@@ -199,7 +205,7 @@ function fillSup(){const s=+PID.value;if(!s){alert('اول تامین‌کنند
   L.forEach(x=>{let tr=[...rowsEl.querySelectorAll('tr')].find(r=>!r.querySelector('input[name=item_id]').value&&!r.querySelector('.code').value);if(!tr)tr=addRow(false);setItem(tr,x)});
   addRow(false);calc();rowsEl.querySelector('input[name=ctn]:not([disabled]),input[name=box]').focus()}
 function supTpl(){const s=+PID.value;location.href='/purchases/template.xlsx'+(s?'?supplier='+s:'')}
-function pickParty(x){PID.value=x.id;PIN.value=x.code+' - '+x.name;const vs=document.getElementById('vsel');if(vs&&x.vid&&!vs.value)vs.value=x.vid;const c=rowsEl.querySelector('.code');c&&c.focus()}
+function pickParty(x){PID.value=x.id;PIN.value=x.code+' - '+x.name;dueCalc();const vs=document.getElementById('vsel');if(vs&&x.vid&&!vs.value)vs.value=x.vid;const c=rowsEl.querySelector('.code');c&&c.focus()}
 if(PIN){PIN.addEventListener('input',()=>{PID.value='';showList(PIN,match(PS,PIN.value,/^[a-z0-9]/i.test(PIN.value.trim())?'code':'name'),pickParty)});
   PIN.addEventListener('focus',()=>{if(!PIN.value)showList(PIN,PS.slice(0,12),pickParty)});
   PIN.addEventListener('keydown',e=>{if(!keyNav(e)&&e.key==='Enter')e.preventDefault()});

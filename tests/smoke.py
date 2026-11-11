@@ -511,6 +511,27 @@ b3 = io.BytesIO(); we.save(b3); b3.seek(0)
 r = ok(cl.post("/items/import", data={"file": (b3, "e.xlsx"), "date": "1405/09/08", "wh_id": w1}, content_type="multipart/form-data", follow_redirects=True), "imp3")
 assert "اصلاح موجودی" in T(r) and one(f"SELECT SUM(qty) FROM stock_moves WHERE item_id={k1} AND wh_id={w1}") == 57, T(r)[:400]
 assert one(f"SELECT price FROM prices WHERE item_id={k1} ORDER BY date DESC, id DESC LIMIT 1") == 200
+# payment term per item -> invoice due date = weighted average (weight = line amount); manual due date wins
+with eng.begin() as c_:
+    c_.execute(text(f"UPDATE items SET pay_days=30 WHERE id={k1}")); c_.execute(text(f"UPDATE items SET pay_days=60 WHERE id={k2}"))
+    c_.execute(text(f"UPDATE persons SET credit_days=0 WHERE id={c1}"))
+P("/receipts/new", {"date": "1405/09/09", "wh_id": w1, "item_id": [k1, k2], "ctn": [0, 0], "box": [20, 20], "price": [100, 100]})
+P("/sales/new", {"date": "1405/09/10", "wh_id": w1, "party_id": c1, "item_id": [k1, k2], "ctn": [0, 0], "box": [3, 1], "price": [100, 100]})
+dr = one("SELECT due_date || '|' || due_auto FROM sales_invoices ORDER BY id DESC LIMIT 1")
+assert dr == "1405/10/18|1", dr          # (300*30 + 100*60)/400 = 37.5 -> 38 days after 1405/09/10
+P("/sales/new", {"date": "1405/09/10", "wh_id": w1, "party_id": c1, "item_id": [k1], "ctn": [0], "box": [1], "price": [100], "due_date": "1405/09/15"})
+assert one("SELECT due_date || '|' || due_auto FROM sales_invoices ORDER BY id DESC LIMIT 1") == "1405/09/15|0"
+assert "میانگین وزنی" in T(G("/sales/new"))
+# reports
+for u in ["/reports/trend", "/reports/trend?grain=day", "/reports/trend?grain=week&group=" + str(one("SELECT MIN(id) FROM item_groups") or ""),
+          "/reports/groups", "/reports/items?from=1405/01/01", "/reports/abc?by=profit", "/reports/cover", "/reports/price-changes?from=1405/01/01",
+          "/reports/inactive?days=1", "/reports/matrix?rows=customer&cols=supplier&val=profit", "/reports/matrix?rows=group&cols=visitor"]:
+    for fm in ("", "&fmt=xlsx", "&fmt=pdf"):
+        r_ = cl.get(u + ("&" if "?" in u else "?") + "from=1405/01/01" + fm if "from=" not in u else u + fm)
+        assert r_.status_code == 200, (u, fm, r_.status_code, T(r_)[-800:])
+r_ = T(cl.get("/reports/items?from=1405/01/01&to=1405/12/29"))
+op_ = one(f"SELECT SUM(qty) FROM stock_moves WHERE item_id={k1}")
+assert f"{op_:,}" in r_
 # temporary data reset page
 assert cl.get("/system/reset").status_code == 404
 gl_ok()

@@ -295,7 +295,7 @@ def purchases():
 
 
 def _suppliers():
-    return q("SELECT id, code, name, visitor_id FROM persons WHERE is_supplier=1 AND active=1 ORDER BY code")
+    return q("SELECT id, code, name, visitor_id, credit_days FROM persons WHERE is_supplier=1 AND active=1 ORDER BY code")
 
 
 def _save_purchase(pid=None):
@@ -318,8 +318,13 @@ def _save_purchase(pid=None):
         if it["supplier_id"] and it["supplier_id"] != sid:
             raise ValueError(f"کالای «{it['name']}» متعلق به تامین‌کننده «{it['sname']}» است.")
     x("UPDATE items SET supplier_id=? WHERE id = ANY(?) AND supplier_id IS NULL", (sid, [l[0] for l in lines]))
+    due, auto = norm_date(request.form.get("due_date")), 0
+    if not due and kind == "buy":
+        from core import due_from_items
+        due = due_from_items(date, lines, sid)[0]
+        auto = 1 if due else 0
     hdr = (kind, date, sid, wh, request.form.get("ref_no", "").strip() or None, disc, request.form.get("note"),
-           norm_date(request.form.get("due_date")), request.form.get("pay_terms") or None)
+           due, request.form.get("pay_terms") or None, auto)
     from core import stock_snapshot, worse_negative
     before = stock_snapshot({(i, wh) for i, *_ in lines} |
                             {(m["item_id"], m["wh_id"]) for m in q("SELECT item_id, wh_id FROM stock_moves WHERE doc_type='PUR' AND doc_id=?", (pid or 0,))})
@@ -327,13 +332,13 @@ def _save_purchase(pid=None):
         old = q("SELECT * FROM purchases WHERE id=?", (pid,), one=True)
         del_moves("PUR", pid)
         x("DELETE FROM purchase_lines WHERE pur_id=?", (pid,))
-        x("UPDATE purchases SET kind=?, date=?, supplier_id=?, wh_id=?, ref_no=?, discount=?, note=?, due_date=?, pay_terms=?, updated_by=? WHERE id=?",
+        x("UPDATE purchases SET kind=?, date=?, supplier_id=?, wh_id=?, ref_no=?, discount=?, note=?, due_date=?, pay_terms=?, due_auto=?, updated_by=? WHERE id=?",
           hdr + (uid(), pid))
         no = old["no"]
     else:
         no = next_no("PUR")
-        pid = x("""INSERT INTO purchases(no,kind,date,supplier_id,wh_id,ref_no,discount,note,due_date,pay_terms,created_by)
-                   VALUES(?,?,?,?,?,?,?,?,?,?,?)""", (no,) + hdr + (uid(),))
+        pid = x("""INSERT INTO purchases(no,kind,date,supplier_id,wh_id,ref_no,discount,note,due_date,pay_terms,due_auto,created_by)
+                   VALUES(?,?,?,?,?,?,?,?,?,?,?,?)""", (no,) + hdr + (uid(),))
     if kind == "return":
         check_stock(qty_by_item(lines), wh)
     for i, qt, p, d, vr in lines:

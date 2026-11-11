@@ -391,33 +391,6 @@ def rep_kardex():
     return export.out(spec, items=items, item_id=iid, whs=warehouses_list(False))
 
 
-@rep("/reports/items", "rep_items", "rep_stock")
-def rep_items():
-    f, t = period()
-    wid = to_int(request.args.get("wh")) or None
-    st = {r["id"]: r for r in stock_rows(wh_id=wid)}
-    wf = " AND m.wh_id=?" if wid else ""
-    mv = {}
-    for r in q(f"""SELECT m.item_id, m.doc_type, SUM(m.qty) s FROM stock_moves m WHERE m.date BETWEEN ? AND ?{wf} GROUP BY m.item_id, m.doc_type""",
-               [f, t] + ([wid] if wid else [])):
-        mv.setdefault(r["item_id"], {})[r["doc_type"]] = r["s"]
-    sales = {r["item_id"]: r for r in q(f"""SELECT l.item_id, SUM(l.qty*s.sg) qty, SUM((l.qty*l.price-l.disc)*s.sg) amt {SL} WHERE s.date BETWEEN ? AND ?
-                                           {' AND s.wh_id=?' if wid else ''} GROUP BY l.item_id""", [f, t] + ([wid] if wid else []))}
-    data = []
-    for i in _items():
-        m, sv, s_ = mv.get(i["id"], {}), sales.get(i["id"]), st[i["id"]]
-        data.append([i["code"], link(i["name"], url_for("rep_kardex", item=i["id"], wh=wid or "", **{"from": f, "to": t})),
-                     m.get("RES", 0), m.get("PUR", 0), m.get("TRF", 0), -m.get("AMN", 0), m.get("MRJ", 0), -m.get("FCT", 0), m.get("SRT", 0),
-                     sv["qty"] if sv else 0, sv["amt"] if sv else 0, s_["st"], s_["open_amani"]])
-    data = [d for d in data if any(d[k] for k in range(2, 13))]
-    spec = {"title": "گردش کالا به کالا", "sub": f"از {f} تا {t}" + (f" | انبار: {_whname(wid)}" if wid else ""), "filters": ["period", "wh"],
-            "sections": [{"cols": [("کد", "text"), ("کالا", "text"), ("رسید", "num"), ("خرید خالص", "num"), ("حواله (±)", "num"), ("تحویل امانی", "num"),
-                                   ("مرجوعی", "num"), ("فروش مستقیم", "num"), ("برگشت از فروش", "num"), ("کل فروش خالص (تعداد)", "num"),
-                                   ("کل فروش (ریال، بدون مالیات)", "money"), ("موجودی فعلی", "num"), ("امانی باز", "num")],
-                          "rows": data, "total": ["جمع", ""] + [sum(r[i] for r in data) for i in range(2, 13)]}]}
-    return export.out(spec, whs=warehouses_list(False))
-
-
 @rep("/reports/amani", "rep_amani", "rep_stock")
 def rep_amani():
     vid = to_int(request.args.get("visitor"))

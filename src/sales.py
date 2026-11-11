@@ -4,7 +4,7 @@ from core import stock_snapshot, worse_negative, qty_by_item
 from core import (app, q, x, v1, db, next_no, to_int, uid, uname, price_at, buy_at, add_moves, del_moves, check_stock, default_wh,
                   INV_SQL, CONS_SQL, inv_paid, period, money, pkr, DOC, METHOD, can)
 from inventory import parse_lines, form_ctx, doc_out, wh_valid, item_lines, line_vat, doc_init_lines, _no_negative, _can_remove_moves
-from core import vat_of, inv_status
+from core import vat_of, inv_status, due_from_items
 import export
 from jalali import today_j, norm_date
 
@@ -20,7 +20,7 @@ def _holders():
 
 
 def _customers():
-    return q("SELECT id, code, name, visitor_id FROM persons WHERE is_customer=1 AND active=1 ORDER BY code")
+    return q("SELECT id, code, name, visitor_id, credit_days FROM persons WHERE is_customer=1 AND active=1 ORDER BY code")
 
 
 def cons_lines(cid):
@@ -44,18 +44,19 @@ def create_invoice(kind, date, customer, visitor, wh, lines, discount=0, note=No
             r = q("SELECT vat_rate FROM items WHERE id=?", (i,), one=True)
             ln = (i, qt, p, 0, vat_of(r["vat_rate"] if r else None))
         full.append(ln)
-    hdr = (kind, date, customer, visitor, wh, cons_id, discount, note, ex.get("due_date"), ex.get("pay_terms"), ex.get("ref_no"), ex.get("ret_of"))
+    hdr = (kind, date, customer, visitor, wh, cons_id, discount, note, ex.get("due_date"), ex.get("pay_terms"), ex.get("ref_no"), ex.get("ret_of"),
+           1 if ex.get("due_auto") else 0)
     if iid:
         no = v1("SELECT no FROM sales_invoices WHERE id=?", (iid,))
         for t in ("FCT", "SRT"):
             del_moves(t, iid)
         x("DELETE FROM sales_lines WHERE inv_id=?", (iid,))
         x("""UPDATE sales_invoices SET kind=?, date=?, customer_id=?, visitor_id=?, wh_id=?, cons_id=?, discount=?, note=?, due_date=?,
-             pay_terms=?, ref_no=?, ret_of=?, updated_by=? WHERE id=?""", hdr + (uid(), iid))
+             pay_terms=?, ref_no=?, ret_of=?, due_auto=?, updated_by=? WHERE id=?""", hdr + (uid(), iid))
     else:
         no = next_no("FCT")
-        iid = x("""INSERT INTO sales_invoices(no,kind,date,customer_id,visitor_id,wh_id,cons_id,discount,note,due_date,pay_terms,ref_no,ret_of,created_by)
-                   VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?)""", (no,) + hdr + (uid(),))
+        iid = x("""INSERT INTO sales_invoices(no,kind,date,customer_id,visitor_id,wh_id,cons_id,discount,note,due_date,pay_terms,ref_no,ret_of,due_auto,created_by)
+                   VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""", (no,) + hdr + (uid(),))
     for i, qt, p, d, vr in full:
         x("INSERT INTO sales_lines(inv_id,item_id,qty,price,disc,vat_rate,vat,cost) VALUES(?,?,?,?,?,?,?,?)",
           (iid, i, qt, p, d, vr, line_vat(qt, p, d, vr), (costs or {}).get(i) or buy_at(i, cost_date or date) or 0))
@@ -176,7 +177,7 @@ def amani_settle(cid):
     lines = cons_lines(cid)
     holder = q("SELECT * FROM persons WHERE id=?", (c["visitor_id"],), one=True)
     inv_visitor = c["visitor_id"] if holder["is_visitor"] else holder["visitor_id"]
-    custs = q("""SELECT id, code, name, visitor_id FROM persons WHERE is_customer=1 AND active=1
+    custs = q("""SELECT id, code, name, visitor_id, credit_days FROM persons WHERE is_customer=1 AND active=1
                  ORDER BY (id=?) DESC, (visitor_id=?) DESC, code""", (c["visitor_id"], c["visitor_id"]))
     if request.method == "POST":
         f = request.form
@@ -232,7 +233,8 @@ def amani_settle(cid):
             nos = []
             for cust, m in merged.items():
                 no, _ = create_invoice("consign", date, cust, inv_visitor, c["wh_id"], [(i, qp[0], qp[1]) for i, qp in m.items()],
-                                       note=f"عطف به امانی {c['no']}", cons_id=cid, cost_date=c["date"])
+                                       note=f"عطف به امانی {c['no']}", cons_id=cid, cost_date=c["date"],
+                                       extra={"due_date": due_from_items(date, [(i, qp[0], qp[1]) for i, qp in m.items()], cust)[0], "due_auto": 1})
                 nos.append(no)
             rno = next_no("MRJ") if any(d["ret"] for d in L.values()) else None
             for lid, d in L.items():
@@ -305,7 +307,11 @@ def _save_sale(kind, iid=None):
             if qt > left:
                 raise ValueError(f"برگشت «{names.get(i)}» بیشتر از مقدار قابل برگشت است (فروش {sold[i]['qty']:,}، برگشت قبلی {back.get(i, 0):,}، قابل برگشت {left:,}).")
         costs = {i: r["cost"] for i, r in sold.items()}
-    extra = {"due_date": norm_date(request.form.get("due_date")), "pay_terms": request.form.get("pay_terms") or None,
+    due, auto = norm_date(request.form.get("due_date")), 0
+    if not due and kind == "direct":
+        due = due_from_items(date, lines, cust)[0]
+        auto = 1 if due else 0
+    extra = {"due_date": due, "due_auto": auto, "pay_terms": request.form.get("pay_terms") or None,
              "ref_no": request.form.get("ref_no", "").strip() or None, "ret_of": ret_of}
     if kind == "direct" and not iid:
         check_stock(qty_by_item(lines), wh)

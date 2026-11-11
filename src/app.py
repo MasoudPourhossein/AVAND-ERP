@@ -1,6 +1,6 @@
 import os
 from core import app, init_db
-import auth, masters, inventory, sales, reports, treasury, accounting, cleanup, backups, reports2  # noqa: F401  (register routes)
+import auth, masters, inventory, sales, reports, treasury, accounting, cleanup, backups, reports2, reports3  # noqa: F401  (register routes)
 
 init_db()
 

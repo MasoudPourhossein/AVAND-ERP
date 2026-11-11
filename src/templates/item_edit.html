@@ -27,6 +27,7 @@
 <div><label>واحد بسته‌بندی</label><input name="pack_unit" value="{{ it.pack_unit }}"></div>
 <div><label>تعداد باکس در هر کارتن</label><input name="pack" type="number" min="1" value="{{ it.pack }}"></div>
 <div><label>نرخ مالیات (%) — خالی = پیش‌فرض شرکت</label><input name="vat_rate" value="{{ '' if it.vat_rate is none else it.vat_rate }}" inputmode="decimal"></div>
+<div><label>فرجه پرداخت (روز) — خالی = مهلت طرف حساب</label><input name="pay_days" type="number" min="0" value="{{ '' if it.pay_days is none else it.pay_days }}"></div>
 <div style="grid-column:1/-1"><label>توضیح</label><input name="note" value="{{ it.note or '' }}"></div>
 <div><label style="display:flex;gap:8px;align-items:center;color:var(--txt)"><input type="checkbox" name="active" value="1" {{ 'checked' if it.active }} style="width:auto"> کالا فعال است</label></div>
 <div><button class="btn">ذخیره</button></div>

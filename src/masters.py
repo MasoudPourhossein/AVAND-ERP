@@ -4,6 +4,12 @@ from flask import render_template, request, redirect, url_for, flash, abort, jso
 from core import (app, q, x, v1, db, next_no, to_int, uid, price_at, buy_at, stock_rows, add_moves, default_wh, warehouses_list,
                   money, pk, pkr, can, PERSON_KINDS, safe_back)
 from jalali import today_j, norm_date
+from costing import touch
+
+
+def _days_in():
+    v = str(request.form.get("pay_days", "")).strip()
+    return None if v == "" else max(to_int(v), 0)
 
 
 def _vat_in():
@@ -103,11 +109,11 @@ def items():
         elif q("SELECT 1 FROM items WHERE code=?", (code,), one=True):
             flash("این کد کالا قبلا ثبت شده است.", "bad")
         else:
-            iid = x("INSERT INTO items(code,name,group_id,unit,pack,pack_unit,barcode,vat_rate,supplier_id) VALUES(?,?,?,?,?,?,?,?,?)",
-                    (code, name, gid, unit, pack, pack_unit, request.form.get("barcode", "").strip() or None, _vat_in(), sid))
+            iid = x("INSERT INTO items(code,name,group_id,unit,pack,pack_unit,barcode,vat_rate,supplier_id,pay_days) VALUES(?,?,?,?,?,?,?,?,?,?)",
+                    (code, name, gid, unit, pack, pack_unit, request.form.get("barcode", "").strip() or None, _vat_in(), sid, _days_in()))
             has_p, has_b = str(request.form.get("price", "")).strip() != "", str(request.form.get("buy", "")).strip() != ""
             if has_p or has_b:
-                x("INSERT INTO prices(item_id,date,price,buy) VALUES(?,?,?,?)", (iid, date, price if has_p else None, buy if has_b else None))
+                x("INSERT INTO prices(item_id,date,price,buy) VALUES(?,?,?,?)", (iid, date, price if has_p else None, buy if has_b else None)); touch([iid])
             msg = f"کالا «{name}» با کد {code} ثبت شد."
             if init_qty > 0:
                 from inventory import make_receipt
@@ -150,12 +156,12 @@ def item_edit(iid):
         if code != it["code"] and q("SELECT 1 FROM items WHERE code=? AND id<>?", (code, iid), one=True):
             flash("این کد کالا برای کالای دیگری ثبت شده است.", "bad")
         elif name:
-            x("""UPDATE items SET code=?, name=?, group_id=?, unit=?, pack=?, pack_unit=?, barcode=?, active=?, note=?, vat_rate=?, supplier_id=?
+            x("""UPDATE items SET code=?, name=?, group_id=?, unit=?, pack=?, pack_unit=?, barcode=?, active=?, note=?, vat_rate=?, supplier_id=?, pay_days=?
                  WHERE id=?""",
               (code, name, to_int(request.form.get("group_id")) or None, request.form.get("unit", "").strip() or "باکس",
                max(to_int(request.form.get("pack"), it["pack"]), 1), request.form.get("pack_unit", "").strip() or "کارتن",
                request.form.get("barcode", "").strip() or None, 1 if request.form.get("active") else 0,
-               request.form.get("note", "").strip() or None, _vat_in(), sid, iid))
+               request.form.get("note", "").strip() or None, _vat_in(), sid, _days_in(), iid))
             db().commit()
             flash("ویرایش ذخیره شد.", "ok")
         return redirect(url_for("item_edit", iid=iid))
@@ -177,7 +183,7 @@ def prices():
         if not iid or not date or (price or 0) < 0 or (buy or 0) < 0 or (price is None and buy is None):
             flash("کالا، تاریخ معتبر و حداقل یکی از نرخ خرید یا فروش لازم است (صفر هم مجاز است).", "bad")
         else:
-            x("INSERT INTO prices(item_id,date,price,buy) VALUES(?,?,?,?)", (iid, date, price, buy))
+            x("INSERT INTO prices(item_id,date,price,buy) VALUES(?,?,?,?)", (iid, date, price, buy)); touch([iid])
             db().commit()
             msg = "نرخ ثبت شد:" + (f" خرید {money(buy)}" if buy is not None else "") + (f" فروش {money(price)}" if price is not None else "") + " ریال"
             if buy and price:
@@ -190,6 +196,7 @@ def prices():
 
 @app.post("/prices/<int:pid>/delete")
 def price_delete(pid):
+    touch([v1("SELECT item_id FROM prices WHERE id=?", (pid,))])
     x("DELETE FROM prices WHERE id=?", (pid,))
     db().commit()
     flash("نرخ حذف شد.", "ok")
@@ -220,7 +227,7 @@ def items_bulk_price():
             return max(int(round(nv / rnd)) * rnd, 0)
         np_, nb = (ch(p) if target in ("price", "both") else p), (ch(b) if target in ("buy", "both") else b)
         if (np_, nb) != (p, b):
-            x("INSERT INTO prices(item_id,date,price,buy) VALUES(?,?,?,?)", (r["id"], date, np_, nb))
+            x("INSERT INTO prices(item_id,date,price,buy) VALUES(?,?,?,?)", (r["id"], date, np_, nb)); touch([r["id"]])
             n += 1
     db().commit()
     flash(f"نرخ {n} کالا از تاریخ {date} تغییر کرد.", "ok")
@@ -423,7 +430,7 @@ def items_import():
                 if b is not None or p is not None:
                     nb, np_ = (b if b is not None else cb), (p if p is not None else cp)
                     if (nb, np_) != (cb, cp):
-                        x("INSERT INTO prices(item_id,date,price,buy) VALUES(?,?,?,?)", (iid, date, np_, nb))
+                        x("INSERT INTO prices(item_id,date,price,buy) VALUES(?,?,?,?)", (iid, date, np_, nb)); touch([iid])
                         priced += 1
                 oq = (nums["موجودی اولیه (کارتن)"] or 0) * k + (nums["موجودی اولیه (باکس)"] or 0)
                 if oq:

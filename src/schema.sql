@@ -219,3 +219,8 @@ ALTER TABLE cons_lines ADD COLUMN IF NOT EXISTS cost DOUBLE PRECISION;
 -- v5: a price row may set only one of the two prices (NULL = not set here), 0 is a real price
 ALTER TABLE prices ALTER COLUMN price DROP NOT NULL;
 ALTER TABLE prices ALTER COLUMN buy DROP NOT NULL;
+
+-- v7: payment term per item (days). Invoice due date default = weighted average of its items' terms (weight = line amount)
+ALTER TABLE items ADD COLUMN IF NOT EXISTS pay_days INT;
+ALTER TABLE sales_invoices ADD COLUMN IF NOT EXISTS due_auto INT NOT NULL DEFAULT 0;
+ALTER TABLE purchases ADD COLUMN IF NOT EXISTS due_auto INT NOT NULL DEFAULT 0;

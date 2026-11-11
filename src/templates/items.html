@@ -15,6 +15,7 @@
   <div><label>گروه</label><select name="group_id"><option value="">—</option>{% for g_ in groups %}<option value="{{ g_.id }}">{{ g_.code }} - {{ g_.name }}</option>{% endfor %}</select></div>
   <div><label>بارکد</label><input name="barcode"></div>
   <div><label>نرخ مالیات % (خالی = پیش‌فرض)</label><input name="vat_rate" inputmode="decimal"></div>
+  <div><label>فرجه پرداخت (روز)</label><input name="pay_days" type="number" min="0" placeholder="خالی = مهلت طرف حساب"></div>
   <div><label>واحد فروش</label><input name="unit" value="باکس"></div>
   <div><label>واحد بسته‌بندی</label><input name="pack_unit" value="کارتن"></div>
   <div><label>تعداد باکس در هر کارتن</label><input name="pack" id="npk" type="number" min="1" value="1" required></div>
