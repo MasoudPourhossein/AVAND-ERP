@@ -49,6 +49,8 @@ def open_items(side="recv", t=None, pid=None):
         for d in sorted(by.get(b["p"], []), key=lambda d: (d["due"], d["date"], d["no"]), reverse=True):
             if left <= 0:
                 break
+            if d["total"] <= 0:
+                continue
             o = min(left, d["total"])
             left -= o
             out.append({"person": p["id"], "pcode": p["code"], "pname": p["name"], "visitor_id": d["visitor_id"] or p["visitor_id"],
@@ -58,6 +60,32 @@ def open_items(side="recv", t=None, pid=None):
             out.append({"person": p["id"], "pcode": p["code"], "pname": p["name"], "visitor_id": p["visitor_id"], "vname": p["vname"] or "",
                         "doc_id": None, "no": None, "date": "", "due": t, "total": left, "open": left, "overdue": 0})
     return sorted(out, key=lambda r: (r["due"], r["pcode"]))
+
+
+def closed_items(side, t, f, pid=None, vid=None, skip=()):
+    """invoices with nothing open (settled, or amount 0) dated f..t, for the statement's 'all invoices' view"""
+    if side == "recv":
+        w, a = " WHERE s.kind<>'return' AND s.date BETWEEN ? AND ?", [f, t]
+        if pid:
+            w += " AND s.customer_id=?"; a.append(pid)
+        if vid:
+            w += " AND COALESCE(s.visitor_id, p.visitor_id)=?"; a.append(vid)
+        docs = q(f"""SELECT s.id, s.no, s.date, s.due_date, s.total, p.id person, p.code pcode, p.name pname, p.credit_days,
+                     COALESCE(s.visitor_id, p.visitor_id) visitor_id, COALESCE(v.name, pv.name, '') vname FROM v_si s JOIN persons p ON p.id=s.customer_id
+                     LEFT JOIN persons v ON v.id=s.visitor_id LEFT JOIN persons pv ON pv.id=p.visitor_id{w}""", a)
+    else:
+        w, a = " WHERE u.kind<>'return' AND u.date BETWEEN ? AND ?", [f, t]
+        if pid:
+            w += " AND u.supplier_id=?"; a.append(pid)
+        docs = q(f"""SELECT u.id, u.no, u.date, u.due_date, u.total, p.id person, p.code pcode, p.name pname, p.credit_days,
+                     NULL visitor_id, '' vname FROM v_pu u JOIN persons p ON p.id=u.supplier_id{w}""", a)
+    out = []
+    for d in docs:
+        if d["id"] in skip:
+            continue
+        due = d["due_date"] or (add_days(d["date"], d["credit_days"]) if d["credit_days"] else d["date"])
+        out.append(dict(d, doc_id=d["id"], due=due, open=0, overdue=diff_days(due, t), closed=True))
+    return out
 
 
 def _doc_link(side, r):
@@ -91,6 +119,13 @@ def fin_due():
     items = open_items(side, t, pid if as_ in ("customer", "supplier") else None)
     if as_ == "visitor":
         items = [r for r in items if r["visitor_id"] == pid]
+    show = request.args.get("show") if request.args.get("show") in ("open", "all") else ("open" if as_ == "all" or (as_ == "supplier" and not pid) else "all")
+    f = norm_date(request.args.get("from") or "") or year_start(t)
+    shown = list(items)
+    if show == "all":
+        shown += closed_items(side, t, f, pid if as_ in ("customer", "supplier") else None, pid if as_ == "visitor" else None,
+                              {r["doc_id"] for r in items if r["doc_id"]})
+        shown.sort(key=lambda r: (r["due"], r["pcode"], r.get("no") or 0))
     # cheques not yet cashed (received) / not yet paid (issued)
     cw, ca = (" WHERE c.kind='recv' AND c.status IN ('in_box','in_bank')", []) if side == "recv" else (" WHERE c.kind='pay' AND c.status='issued'", [])
     if pid and as_ in ("customer", "supplier"):
@@ -103,9 +138,10 @@ def fin_due():
     for r in items:
         B[bucket(r["overdue"])] += r["open"]
     cum, det = 0, []
-    for r in items:
+    for r in shown:
         cum += r["open"]
-        det.append([r["due"], WEEKDAYS[weekday(r["due"])] if r["due"] else "", _status(r["overdue"]),
+        st = ("فاکتور با مبلغ صفر" if not r["total"] else "تسویه شده") if r.get("closed") else _status(r["overdue"])
+        det.append([r["due"], WEEKDAYS[weekday(r["due"])] if r["due"] else "", st,
                     link(f"{r['pcode']} - {r['pname']}", url_for("fin_statement", person=r["person"])), r["vname"], _doc_link(side, r),
                     r["date"], r["total"], r["open"], cum])
     secs = []
@@ -133,10 +169,10 @@ def fin_due():
                  for v in sorted(V.values(), key=lambda v: -v[-1])]
         secs.append({"title": "خلاصه به تفکیک ویزیتور", "cols": [("ویزیتور", "text")] + [(b[2], "money") for b in BUCKETS] + [("جمع", "money")],
                      "rows": vrows, "total": ["جمع"] + [sum(r[1 + i] for r in vrows) for i in range(len(BUCKETS) + 1)]})
-    secs.append({"title": "ریز فاکتورهای باز به ترتیب سررسید", "cols": [("سررسید", "text"), ("روز", "text"), ("وضعیت", "text"),
+    secs.append({"title": ("ریز همه فاکتورها (باز، تسویه‌شده و مبلغ صفر) به ترتیب سررسید" if show == "all" else "ریز فاکتورهای باز به ترتیب سررسید"), "cols": [("سررسید", "text"), ("روز", "text"), ("وضعیت", "text"),
                 ("طرف حساب", "text"), ("ویزیتور", "text"), ("سند", "text"), ("تاریخ فاکتور", "text"), ("مبلغ فاکتور", "money"),
                 ("مانده باز", "money"), ("جمع تجمعی", "money")], "rows": det,
-                 "total": ["جمع", "", "", "", "", "", "", "", sum(r["open"] for r in items), ""]})
+                 "total": ["جمع", "", "", "", "", "", "", sum(r["total"] for r in shown), sum(r["open"] for r in items), ""]})
     secs.append({"title": "چک‌های " + ("دریافتی وصول‌نشده (نزد صندوق / در جریان وصول)" if side == "recv" else "پرداختی پاس‌نشده") + " به ترتیب سررسید",
                  "cols": [("سررسید", "text"), ("وضعیت", "text"), ("طرف حساب", "text"), ("سریال", "text"), ("بانک", "text"), ("مبلغ", "money")],
                  "rows": [[c["due_date"], _status(diff_days(c["due_date"], t)), c["pname"] or "", link(c["serial"] or f"#{c['id']}", url_for("cheque_view", cid=c["id"])),
@@ -145,8 +181,9 @@ def fin_due():
     who = {"all": "همه مشتریان", "customer": f"مشتری: {_pname(pid) or ''}", "visitor": f"ویزیتور: {_pname(pid) or ''}",
            "supplier": f"تامین‌کننده: {_pname(pid) or 'همه'}"}[as_]
     spec = {"title": "صورت‌حساب بر اساس سررسید — " + who, "sub": f"مانده‌ها به تاریخ {t} — سررسید فاکتور = سررسید ثبت‌شده، یا تاریخ فاکتور + مهلت پرداخت شخص",
-            "filters": [], "inputs": [("to", "به تاریخ", t)],
-            "selects": [("as", [("all", "کل مشتریان"), ("customer", "هر مشتری"), ("visitor", "هر ویزیتور"), ("supplier", "تامین‌کنندگان")], as_)] +
+            "filters": [], "inputs": ([("from", "تسویه‌شده‌ها از تاریخ", f)] if show == "all" else []) + [("to", "به تاریخ", t)],
+            "selects": [("as", [("all", "کل مشتریان"), ("customer", "هر مشتری"), ("visitor", "هر ویزیتور"), ("supplier", "تامین‌کنندگان")], as_),
+                        ("show", [("all", "همه فاکتورها"), ("open", "فقط فاکتورهای باز")], show)] +
                        ([("person", ([("", "همه")] if as_ == "supplier" else []) + [(str(o["id"]), f"{o['code']} - {o['name']}") for o in opts], str(pid or ""))] if opts else []),
             "kpis": [("سررسید گذشته", B[0] + B[1], "money"), ("تا ۷ روز آینده", B[2], "money"), ("بعد از ۷ روز", B[3] + B[4], "money"),
                      ("چک‌های " + ("وصول‌نشده" if side == "recv" else "پاس‌نشده"), sum(c["amount"] for c in chq), "money")],

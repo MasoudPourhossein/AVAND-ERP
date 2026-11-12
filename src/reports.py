@@ -544,6 +544,15 @@ def fin_statement():
             bal += l["debit"] - l["credit"]; dr += l["debit"]; cr += l["credit"]
             rows.append([l["date"], link(l["vdescr"] or l["descr"] or "", src_link(l["src_type"], l["src_id"]) or url_for("voucher_view", vid=l["voucher_id"])),
                          l["aname"], l["descr"] or "", l["debit"] or "", l["credit"] or "", bal, "بد" if bal > 0 else ("بس" if bal < 0 else "—")])
+        # invoices with amount 0 make no voucher; list them so the statement shows every invoice
+        zs = [(z["date"], link(f"{'برگشت از فروش' if z['kind'] == 'return' else 'فاکتور فروش'} {z['no']}", url_for("invoice", iid=z["id"])))
+              for z in q("SELECT id, no, date, kind FROM v_si WHERE customer_id=? AND date BETWEEN ? AND ? AND total=0", (pid, f, t))]
+        zs += [(z["date"], link(f"{'برگشت از خرید' if z['kind'] == 'return' else 'فاکتور خرید'} {z['no']}", url_for("purchase_view", pid=z["id"])))
+               for z in q("SELECT id, no, date, kind FROM v_pu WHERE supplier_id=? AND date BETWEEN ? AND ? AND total=0", (pid, f, t))]
+        for d, lk in zs:
+            k = next((n for n in range(1, len(rows)) if rows[n][0] > d), len(rows))
+            b_ = rows[k - 1][6]
+            rows.insert(k, [d, lk, "", "مبلغ صفر (بدون سند حسابداری)", "", "", b_, "بد" if b_ > 0 else ("بس" if b_ < 0 else "—")])
         c3, title = "حساب", "صورت‌حساب"
     spec = {"title": f"{title}: {_pname(pid) or ''}", "sub": f"از {f} تا {t}", "filters": ["period", "person"],
             "sections": [{"cols": [("تاریخ", "text"), ("سند", "text"), (c3, "text"), ("شرح", "text"), ("بدهکار", "money"), ("بستانکار", "money"),

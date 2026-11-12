@@ -532,6 +532,18 @@ for u in ["/reports/trend", "/reports/trend?grain=day", "/reports/trend?grain=we
 r_ = T(cl.get("/reports/items?from=1405/01/01&to=1405/12/29"))
 op_ = one(f"SELECT SUM(qty) FROM stock_moves WHERE item_id={k1}")
 assert f"{op_:,}" in r_
+# statements show settled and zero-amount invoices
+P("/sales/new", {"date": "1405/09/11", "wh_id": w1, "party_id": c1, "item_id": [k1], "ctn": [0], "box": [1], "price": [0]})
+zno = one("SELECT no FROM sales_invoices ORDER BY id DESC LIMIT 1")
+r_ = T(G(f"/reports/fin/statement?person={c1}&from=1405/01/01&to=1405/12/29"))
+assert f"فاکتور فروش {zno}" in r_ and "مبلغ صفر" in r_, r_[-1500:]
+r_ = T(G(f"/reports/fin/due?as=customer&person={c1}&to=1405/12/29"))
+assert f"فاکتور فروش {zno}" in r_ and "فاکتور با مبلغ صفر" in r_ and "همه فاکتورها" in r_
+r_ = T(G(f"/reports/fin/due?as=customer&person={c1}&to=1405/12/29&show=open"))
+assert f"فاکتور فروش {zno}<" not in r_
+for u in ["/reports/fin/due?to=1405/12/29&show=all", "/reports/fin/due?as=visitor&to=1405/12/29", "/reports/fin/due?as=supplier&to=1405/12/29&show=all"]:
+    for fm in ("", "&fmt=pdf"):
+        assert cl.get(u + fm).status_code == 200, u
 # temporary data reset page
 assert cl.get("/system/reset").status_code == 404
 gl_ok()
